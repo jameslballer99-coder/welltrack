@@ -2,6 +2,7 @@
 import { DEFAULT_TARGETS, migrateLogs, migrateFoodCache, migrateFavs, foodKey, upgradeFoods, upgradeSettings } from './core.js';
 
 const K = { logs: 'wt2.logs', checks: 'wt2.checks', foods: 'wt2.foods', favs: 'wt2.favs', settings: 'wt2.settings', schema: 'wt2.schema' };
+const SCHEMA = '3';
 const V1 = { logs: 'welltrack_v4', backup: 'welltrack_v4_backup', checks: 'welltrack_checklist_v1', apiKey: 'welltrack_apikey', cache: 'welltrack_food_cache_v2', favs: 'welltrack_favs_v1' };
 
 export const DEFAULT_SETTINGS = {
@@ -26,14 +27,15 @@ export function loadAll() {
   let logs = read(K.logs, {});
   let foods = read(K.foods, []);
 
-  // One-time upgrade to schema 2 (sodium, split omega-3, corrected hawker values).
-  // The pre-upgrade data is kept alongside in case anything needs recovering.
-  if (localStorage.getItem(K.schema) !== '2') {
-    try { localStorage.setItem(`${K.logs}.before-schema2`, localStorage.getItem(K.logs) || '{}'); } catch { /* storage full: upgrade anyway */ }
+  // One-time upgrade to the current schema (3: cholesterol, soluble fiber, sterols, nuts and the
+  // LDL targets; 2 added sodium and split omega-3). Each upgrade keeps the logs it started from.
+  const schema = localStorage.getItem(K.schema);
+  if (schema !== SCHEMA) {
+    try { localStorage.setItem(`${K.logs}.before-schema${SCHEMA}`, localStorage.getItem(K.logs) || '{}'); } catch { /* storage full: upgrade anyway */ }
     logs = migrateLogs(logs);
     foods = upgradeFoods(foods);
     if (settings.targets || settings.checkFoods) settings = upgradeSettings(settings);
-    if (write(K.logs, logs) && write(K.foods, foods) && write(K.settings, settings)) localStorage.setItem(K.schema, '2');
+    if (write(K.logs, logs) && write(K.foods, foods) && write(K.settings, settings)) localStorage.setItem(K.schema, SCHEMA);
   }
 
   return {

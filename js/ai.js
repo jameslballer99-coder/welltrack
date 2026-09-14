@@ -11,7 +11,8 @@ export const MODELS = [
 const SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['found', 'name', 'serving', 'satFat', 'transFat', 'addedSugar', 'sodium', 'fiber', 'omega3', 'ala', 'confidence'],
+  required: ['found', 'name', 'serving', 'satFat', 'transFat', 'addedSugar', 'sodium', 'fiber', 'omega3', 'ala',
+    'cholesterol', 'solubleFiber', 'sterols', 'nuts', 'confidence'],
   properties: {
     found: { type: 'boolean', description: 'false if no food can be identified' },
     name: { type: 'string', description: 'Specific dish name, e.g. "Char kway teow"' },
@@ -23,6 +24,10 @@ const SCHEMA = {
     fiber: { type: 'number', description: 'Dietary fiber, grams' },
     omega3: { type: 'number', description: 'EPA+DHA omega-3 from fish and seafood only, milligrams' },
     ala: { type: 'number', description: 'Plant omega-3 (ALA) from seeds, nuts, oils and vegetables, milligrams' },
+    cholesterol: { type: 'number', description: 'Dietary cholesterol, milligrams (eggs, organ meat, shellfish, squid, animal fat)' },
+    solubleFiber: { type: 'number', description: 'Soluble (viscous) fiber, grams (oats, barley, psyllium, beans, okra, aubergine, fruit pectin)' },
+    sterols: { type: 'number', description: 'Plant sterols and stanols, milligrams; natural foods give tens of mg, fortified products far more' },
+    nuts: { type: 'number', description: 'Grams of tree nuts or peanuts in the serving (0 if none)' },
     confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
   },
 };
@@ -31,8 +36,9 @@ const SCHEMA = {
 const GUIDE = `You are a nutritionist who knows Singapore hawker and wider Asian food well, as well as Western food.
 Estimate nutrients for one serving of the portion described. Hawker portions are large and cooked with lard, ghee,
 coconut milk, palm oil and salty sauces, so do not underestimate. For scale, Health Promotion Board figures per plate/bowl:
-char kway teow 29 g saturated fat and 1,460 mg sodium; laksa 18 g and 1,590 mg; roasted chicken rice 8.7 g and 1,290 mg;
-nasi lemak 7.6 g and 840 mg; fishball noodle soup 2.4 g and 2,910 mg; mee siam 8.6 g and 2,660 mg.
+char kway teow 29 g saturated fat, 1,460 mg sodium, 234 mg cholesterol; laksa 18 g, 1,590 mg, 81 mg;
+roasted chicken rice 8.7 g, 1,290 mg, 47 mg; nasi lemak 7.6 g, 840 mg, 76 mg; fishball noodle soup 2.4 g, 2,910 mg, 40 mg;
+mee siam 8.6 g, 2,660 mg, 138 mg; kway chap 11.6 g, 2,300 mg, 348 mg.
 Only count EPA+DHA as omega3 (fish, seafood); count plant omega-3 as ala.
 If the input is not a food, set found to false and use 0 for every number.`;
 

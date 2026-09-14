@@ -1,31 +1,45 @@
 // Pure logic: no DOM, no storage. Everything here is covered by tests/core.test.js.
 import { FOODS, LEGACY } from './foods.js';
 
-// `dp` is how many decimals to keep and show. Omega-3 is split because guidelines count EPA+DHA
-// from fish; plant ALA converts to those poorly, so it gets its own daily goal.
+// `dp` is how many decimals to keep and show. `kind`: limit (stay under), goal (reach daily),
+// weekly (reach over 7 days), track (recorded, no target).
+// Omega-3 is split because guidelines count EPA+DHA from fish; plant ALA converts to those poorly.
 export const NUTRIENTS = [
-  { key: 'satFat',     label: 'Sat fat',       unit: 'g',  kind: 'limit',  dp: 1 },
-  { key: 'transFat',   label: 'Trans fat',     unit: 'g',  kind: 'limit',  dp: 1 },
-  { key: 'addedSugar', label: 'Added sugar',   unit: 'g',  kind: 'limit',  dp: 1 },
-  { key: 'sodium',     label: 'Sodium',        unit: 'mg', kind: 'limit',  dp: 0 },
-  { key: 'fiber',      label: 'Fiber',         unit: 'g',  kind: 'goal',   dp: 1 },
-  { key: 'ala',        label: 'Plant omega-3', unit: 'mg', kind: 'goal',   dp: 0 },
-  { key: 'omega3',     label: 'Fish omega-3',  unit: 'mg', kind: 'weekly', dp: 0 },
+  { key: 'satFat',       label: 'Sat fat',        unit: 'g',  kind: 'limit',  dp: 1 },
+  { key: 'cholesterol',  label: 'Cholesterol',    unit: 'mg', kind: 'limit',  dp: 0 },
+  { key: 'transFat',     label: 'Trans fat',      unit: 'g',  kind: 'limit',  dp: 1 },
+  { key: 'solubleFiber', label: 'Soluble fiber',  unit: 'g',  kind: 'goal',   dp: 1 },
+  { key: 'sterols',      label: 'Plant sterols',  unit: 'mg', kind: 'goal',   dp: 0 },
+  { key: 'nuts',         label: 'Nuts',           unit: 'g',  kind: 'goal',   dp: 0 },
+  { key: 'sodium',       label: 'Sodium',         unit: 'mg', kind: 'limit',  dp: 0 },
+  { key: 'addedSugar',   label: 'Added sugar',    unit: 'g',  kind: 'limit',  dp: 1 },
+  { key: 'fiber',        label: 'Total fiber',    unit: 'g',  kind: 'goal',   dp: 1 },
+  { key: 'omega3',       label: 'Fish omega-3',   unit: 'mg', kind: 'weekly', dp: 0 },
+  { key: 'ala',          label: 'Plant omega-3',  unit: 'mg', kind: 'track',  dp: 0 },
 ];
 export const NUTRIENT_KEYS = NUTRIENTS.map(n => n.key);
 export const LIMIT_KEYS = NUTRIENTS.filter(n => n.kind === 'limit').map(n => n.key);
 export const nutrient = key => NUTRIENTS.find(n => n.key === key);
 
-// Sodium: WHO/HPB under 2,000 mg. Fiber: adults need 25–38 g. Plant omega-3: adequate intake
-// 1.1–1.6 g/day. Fish omega-3 (EPA+DHA): ~500 mg/day, i.e. two portions of oily fish a week.
-export const DEFAULT_TARGETS = { satFat: 20, transFat: 2, addedSugar: 50, sodium: 2000, fiber: 30, ala: 1600, omega3Weekly: 3500 };
+// Cholesterol-lowering (LDL) targets plus the Portfolio diet: sat fat under 6% of calories (AHA),
+// no trans fat, dietary cholesterol ≤200 mg, soluble fiber 10–20 g, plant sterols 2 g, nuts 45 g.
+// Also: sodium ≤2,000 mg (blood pressure), added sugar ≤36 g (triglycerides), total fiber 35 g,
+// fish omega-3 ~500 mg a day, counted over the week because fish isn't eaten daily.
+export const DEFAULT_TARGETS = {
+  satFat: 13, transFat: 0, cholesterol: 200, solubleFiber: 10, sterols: 2000, nuts: 45,
+  sodium: 2000, addedSugar: 36, fiber: 35, omega3Weekly: 3500,
+};
+
+// A limit of 0 means "avoid". Labels round anything under 0.5 g down to "0 g", so that's the line.
+export const TRACE = 0.5;
+export const limitRatio = (value, target) => (target > 0 ? value / target : value >= TRACE ? Infinity : 0);
 export const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 // `food` is the built-in food a tick logs until the user edits that entry; their version is then remembered.
 export const CHECKLIST = [
   { id: 'oatmeal',  label: 'Oatmeal',  emoji: '🥣', food: 'Oatmeal, cooked' },
   { id: 'psyllium', label: 'Psyllium', emoji: '🌾', food: 'Psyllium husk' },
   { id: 'flaxseed', label: 'Flaxseed', emoji: '🌱', food: 'Flaxseed, ground' },
-  { id: 'nuts',     label: 'Nuts',     emoji: '🥜', food: 'Almonds' },
+  { id: 'nuts',     label: 'Nuts',     emoji: '🥜', food: 'Mixed nuts, unsalted' },
   { id: 'fruits',   label: 'Fruits',   emoji: '🍎', food: 'Apple' },
 ];
 
@@ -75,7 +89,7 @@ export function dayStatus(day, targets = DEFAULT_TARGETS) {
   const items = dayItems(day);
   if (!items.length) return 'empty';
   const t = totals(items);
-  const ratio = Math.max(...LIMIT_KEYS.map(k => (targets[k] ? t[k] / targets[k] : 0)));
+  const ratio = Math.max(...LIMIT_KEYS.map(k => (k in targets ? limitRatio(t[k], targets[k]) : 0)));
   if (ratio > 1) return 'over';
   if (ratio > 0.75) return 'close';
   return 'good';
@@ -175,23 +189,34 @@ const words = name => foodKey(name).split(' ').filter(w => w.length > 2 && !STOP
 // Word-start matches only, so "eel" doesn't catch "peeled".
 const SEAFOOD = /\b(fish|salmon|tuna|sardine|mackerel|prawn|shrimp|squid|sotong|crab|oyster|seafood|cod|anchov|ikan|lala|clam|mussel|scallop|eel|saba|unagi)/;
 
-// Entries saved before sodium and the omega-3 split have no `ala` key. If an entry still carries a
-// built-in food's old numbers untouched, it gets that food's corrected values. Otherwise the user's
-// numbers are kept, sodium starts unknown (0), and omega-3 counts as fish only for seafood.
+const same = (a, b, keys) => keys.every(k => Math.abs(num(a[k]) - num(b[k])) < 0.011);
+const S2_KEYS = ['satFat', 'transFat', 'addedSugar', 'fiber', 'sodium', 'omega3', 'ala'];
+
+// Entries carry whichever nutrients existed when they were saved:
+//   schema 1: five nutrients, no `ala`;  schema 2: adds sodium and `ala`;  schema 3: adds cholesterol,
+//   soluble fiber, sterols and nuts.
+// If an entry still has a built-in food's numbers untouched, it gets that food's current values.
+// Otherwise the user's numbers are kept and anything new starts at 0 (unknown); for schema-1 entries
+// omega-3 counts as fish only when the name sounds like seafood.
 export function upgradeBase(name, base) {
-  if (!base || 'ala' in base) return base;
+  if (!base || 'cholesterol' in base) return base;
   const w = new Set(words(name));
-  const legacy = LEGACY.find(([oldName, ...rest]) =>
-    OLD_KEYS.every((k, i) => Math.abs(num(base[k]) - rest[i]) < 0.011) && words(oldName).some(x => w.has(x)));
-  if (legacy) {
-    const food = FOODS.find(f => f.name === legacy[6]);
+  const nameMatches = other => words(other).some(x => w.has(x));
+
+  if (!('ala' in base)) {
+    const legacy = LEGACY.find(([oldName, ...rest]) =>
+      OLD_KEYS.every((k, i) => Math.abs(num(base[k]) - rest[i]) < 0.011) && nameMatches(oldName));
+    const food = legacy && FOODS.find(f => f.name === legacy[6]);
     if (food) return { ...food.base };
+    const fishy = SEAFOOD.test(foodKey(name));
+    return cleanBase({ ...base, omega3: fishy ? base.omega3 : 0, ala: fishy ? 0 : base.omega3 });
   }
-  const fishy = SEAFOOD.test(foodKey(name));
-  return cleanBase({ ...base, omega3: fishy ? base.omega3 : 0, ala: fishy ? 0 : base.omega3 });
+
+  const food = FOODS.find(f => same(f.base, base, S2_KEYS) && nameMatches(f.name));
+  return food ? { ...food.base } : cleanBase(base);
 }
 
-export const upgradeItem = it => ('ala' in (it.base || {}) ? it : { ...it, base: upgradeBase(it.name, it.base) });
+export const upgradeItem = it => ('cholesterol' in (it.base || {}) ? it : { ...it, base: upgradeBase(it.name, it.base) });
 export const upgradeFoods = foods => (foods || []).map(upgradeItem);
 export const upgradeCheckFoods = map => Object.fromEntries(Object.entries(map || {}).map(([k, f]) => [k, upgradeItem(f)]));
 
@@ -219,11 +244,12 @@ export function migrateFoodCache(cache) {
     }));
 }
 
-// Targets saved with the old fiber default (15 g) move to the new default.
+// Targets saved before the LDL-focused set (no `cholesterol` target) are replaced by it, as the
+// user asked; targets set after that are kept.
 export function upgradeSettings(settings) {
   if (!settings) return settings;
-  const targets = { ...DEFAULT_TARGETS, ...settings.targets };
-  if (settings.targets && !('sodium' in settings.targets) && settings.targets.fiber === 15) targets.fiber = DEFAULT_TARGETS.fiber;
+  const current = settings.targets && 'cholesterol' in settings.targets;
+  const targets = current ? { ...DEFAULT_TARGETS, ...settings.targets } : { ...DEFAULT_TARGETS };
   return { ...settings, targets, checkFoods: upgradeCheckFoods(settings.checkFoods) };
 }
 

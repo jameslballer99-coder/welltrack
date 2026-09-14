@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import {
   addDays, todayKey, round, dayTotals, dayStatus, computeStreak, series, summarize,
   searchFoods, recentFoods, migrateV1Item, migrateLogs, migrateFavs, normalizeBackup, toCSV, emptyDay, DEFAULT_TARGETS,
-  CHECKLIST, mealForTime, upgradeBase, upgradeSettings,
+  CHECKLIST, mealForTime, upgradeBase, upgradeSettings, limitRatio,
 } from '../js/core.js';
 import { FOODS, LEGACY } from '../js/foods.js';
 
-const item = (name, base, servings = 1) => ({ id: name, name, serving: '1 plate', servings, base: { satFat: 0, transFat: 0, addedSugar: 0, sodium: 0, fiber: 0, omega3: 0, ala: 0, ...base } });
+const ZERO = { satFat: 0, transFat: 0, addedSugar: 0, sodium: 0, fiber: 0, omega3: 0, ala: 0, cholesterol: 0, solubleFiber: 0, sterols: 0, nuts: 0 };
+const item = (name, base, servings = 1) => ({ id: name, name, serving: '1 plate', servings, base: { ...ZERO, ...base } });
+const schema2 = base => Object.fromEntries(['satFat', 'transFat', 'addedSugar', 'fiber', 'sodium', 'omega3', 'ala'].map(k => [k, base[k]]));
 const food = name => FOODS.find(f => f.name === name);
 const day = (meals) => ({ ...emptyDay(), ...meals });
 
@@ -29,10 +31,19 @@ test('totals multiply per-serving values by servings', () => {
 
 test('dayStatus uses the worst limit ratio', () => {
   assert.equal(dayStatus(undefined), 'empty');
-  assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 10 })] })), 'good');
-  assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 16 })] })), 'close');
-  assert.equal(dayStatus(day({ Lunch: [item('a', { transFat: 2.5 })] })), 'over');
+  assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 5 })] })), 'good');
+  assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 12 })] })), 'close');
+  assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 14 })] })), 'over');
   assert.equal(dayStatus(day({ Lunch: [item('soup', { sodium: 2400 })] })), 'over');
+  assert.equal(dayStatus(day({ Breakfast: [item('eggs', { cholesterol: 372 })] })), 'over');
+});
+
+test('a trans fat target of 0 only flags label-visible amounts (0.5 g+)', () => {
+  assert.equal(limitRatio(0.4, 0), 0);
+  assert.equal(limitRatio(0.5, 0), Infinity);
+  assert.equal(limitRatio(10, 20), 0.5);
+  assert.equal(dayStatus(day({ Lunch: [item('milk', { transFat: 0.1 }, 3)] })), 'good');
+  assert.equal(dayStatus(day({ Lunch: [item('Big Mac', { transFat: 1 })] })), 'over');
 });
 
 test('streak counts consecutive in-limit days and skips an empty today', () => {
@@ -160,14 +171,32 @@ test('edited or custom entries keep their numbers and split omega-3 by food type
   assert.equal(upgradeBase('Apple', already), already);
 });
 
-test('old settings move fiber 15 → 30 but keep custom targets', () => {
-  assert.equal(upgradeSettings({ targets: { satFat: 20, fiber: 15, omega3Weekly: 3500 } }).targets.fiber, 30);
-  assert.equal(upgradeSettings({ targets: { satFat: 13, fiber: 25 } }).targets.fiber, 25);
-  assert.equal(upgradeSettings({ targets: { satFat: 13, fiber: 25 } }).targets.satFat, 13);
-  assert.equal(upgradeSettings({ targets: { fiber: 15 } }).targets.sodium, 2000);
+test('schema-2 entries (sodium, split omega-3) gain cholesterol, soluble fiber, sterols and nuts', () => {
+  assert.deepEqual(upgradeBase('Laksa', schema2(food('Laksa').base)), food('Laksa').base);
+  assert.equal(upgradeBase('Walnuts', schema2(food('Walnuts').base)).nuts, 28);
+  assert.equal(upgradeBase('Oatmeal, cooked', schema2(food('Oatmeal, cooked').base)).solubleFiber, 2);
+
+  const edited = upgradeBase('Laksa', { ...schema2(food('Laksa').base), satFat: 12 });
+  assert.equal(edited.satFat, 12);
+  assert.equal(edited.sodium, 1588);
+  assert.equal(edited.cholesterol, 0);
+  assert.equal(Object.keys(edited).length, 11);
+});
+
+test('saved targets from before the LDL set are replaced by it; newer custom targets stay', () => {
+  const old = upgradeSettings({ targets: { satFat: 20, transFat: 2, addedSugar: 50, sodium: 2000, fiber: 30, ala: 1600, omega3Weekly: 3500 } }).targets;
+  assert.equal(old.satFat, 13);
+  assert.equal(old.transFat, 0);
+  assert.equal(old.cholesterol, 200);
+  assert.equal(old.fiber, 35);
+  assert.equal(old.addedSugar, 36);
+  assert.equal(old.nuts, 45);
+  assert.equal(upgradeSettings({ targets: { ...DEFAULT_TARGETS, satFat: 10 } }).targets.satFat, 10);
+
   const nuts = upgradeSettings({ checkFoods: { nuts: { name: 'Walnuts', serving: '28g', servings: 1, base: { satFat: 1.7, transFat: 0, addedSugar: 0, fiber: 1.9, omega3: 2500 } } } });
   assert.equal(nuts.checkFoods.nuts.base.ala, 2500);
   assert.equal(nuts.checkFoods.nuts.base.omega3, 0);
+  assert.equal(nuts.checkFoods.nuts.base.nuts, 28);
 });
 
 test('every legacy row points at a food that exists', () => {
@@ -178,7 +207,8 @@ test('food database rows are complete', () => {
   assert.equal(new Set(FOODS.map(f => f.name)).size, FOODS.length, 'duplicate food names');
   for (const f of FOODS) {
     assert.ok(f.name && f.serving, f.name);
-    assert.equal(Object.keys(f.base).length, 7, f.name);
+    assert.equal(Object.keys(f.base).length, 11, f.name);
+    assert.ok(f.base.solubleFiber <= f.base.fiber, `${f.name}: soluble fiber can't exceed total`);
     for (const v of Object.values(f.base)) assert.ok(Number.isFinite(v) && v >= 0, f.name);
   }
 });

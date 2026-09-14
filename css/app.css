@@ -143,6 +143,10 @@ h2 { font-size: 16px; }
 .seg { display: inline-flex; background: var(--soft); border-radius: 10px; padding: 3px; gap: 2px; flex-wrap: wrap; }
 .seg button { border: none; background: none; border-radius: 8px; padding: 6px 10px; font-size: 13px; color: var(--muted); }
 .seg button[aria-pressed="true"] { background: var(--card); color: var(--text); font-weight: 600; box-shadow: var(--shadow); }
+.metric-pick {
+  min-height: 38px; padding: 0 10px; border-radius: 10px; border: 1.5px solid var(--line);
+  background: var(--soft); font-size: 14px; font-weight: 600; color: var(--text);
+}
 .chart { width: 100%; height: auto; margin-top: 14px; display: block; }
 .chart text { font-size: 9px; fill: var(--faint); }
 .chart .bar-g { cursor: pointer; }

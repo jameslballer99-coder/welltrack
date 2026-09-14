@@ -1,5 +1,5 @@
 import {
-  NUTRIENT_KEYS, LIMIT_KEYS, nutrient, MEALS, CHECKLIST, todayKey, addDays, parseDateKey, toDateKey, fmt, num, round,
+  NUTRIENT_KEYS, limitRatio, nutrient, MEALS, CHECKLIST, todayKey, addDays, parseDateKey, toDateKey, fmt, num, round,
   cleanBase, itemValue, emptyDay, dayItems, dayTotals, totals, computeStreak, sumRange, series, summarize,
   searchFoods, recentFoods, foodKey, normalizeBackup, toCSV, mealForTime,
 } from './core.js';
@@ -7,7 +7,7 @@ import { FOODS } from './foods.js';
 import { loadAll, save, upsertFood, photos, extractPhotos, migrateFromV1IfPresent } from './store.js';
 import { MODELS, estimateByName, estimateFromPhoto, resizeImage } from './ai.js';
 
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.2.0';
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const dp = key => nutrient(key).dp;
@@ -34,25 +34,33 @@ function toast(msg, action) {
 }
 
 // ── Shared bits ───────────────────────────────────────────────
-function meter(key, value, target, kind) {
-  const u = unitOf(key), d = dp(key);
-  const pct = target ? value / target : 0;
+function meter(key, value, target) {
+  const { unit: u, dp: d, kind } = nutrient(key);
+  const avoid = kind === 'limit' && target === 0; // "none": over once it reaches a label-visible 0.5 g
+  const pct = avoid ? (limitRatio(value, 0) ? 1.01 : 0) : target ? value / target : 0;
   const state = kind === 'limit' ? (pct > 1 ? 'over' : pct > 0.75 ? 'close' : 'good') : (pct >= 1 ? 'met' : 'progress');
-  const note = kind === 'limit'
-    ? (pct > 1 ? `${fmt(value - target, d)}${u} over` : `${fmt(target - value, d)}${u} left`)
-    : (pct >= 1 ? 'Goal met ✓' : `${fmt(target - value, d)}${u} to go`) + (kind === 'weekly' ? ' · 7 days' : '');
+  const note = avoid ? (pct > 1 ? 'Avoid' : 'None ✓')
+    : kind === 'limit'
+      ? (pct > 1 ? `${fmt(value - target, d)}${u} over` : `${fmt(target - value, d)}${u} left`)
+      : (pct >= 1 ? 'Goal met ✓' : `${fmt(target - value, d)}${u} to go`) + (kind === 'weekly' ? ' · 7 days' : '');
+  const of = avoid ? 'none' : key === 'solubleFiber' ? `${target}–${Math.max(target, 20)}${u}` : `${target}${u}`;
   return `
     <div class="meter ${state}">
       <div class="meter-top"><span>${labelOf(key)}</span><span class="note">${note}</span></div>
       <div class="bar" role="progressbar" aria-label="${labelOf(key)}" aria-valuemin="0" aria-valuemax="${target}" aria-valuenow="${round(value, d)}"><i style="width:${Math.min(pct, 1) * 100}%"></i></div>
-      <div class="meter-val"><b>${fmt(value, d)}</b> / ${target}${u}</div>
+      <div class="meter-val"><b>${fmt(value, d)}${avoid ? u : ''}</b> / ${of}</div>
     </div>`;
 }
 
-// Short per-food line: the two biggest heart levers for hawker food first, fish omega-3 only when present.
+// Short per-food line, LDL levers first; nuts, sterols and fish omega-3 only when present.
 const foodSummary = (get) => {
-  const fish = get('omega3');
-  return `${fmt(get('satFat'))}g sat · ${fmt(get('sodium'), 0)}mg sodium · ${fmt(get('fiber'))}g fiber${fish >= 100 ? ` · ${fmt(fish, 0)}mg fish ω-3` : ''}`;
+  const extra = [
+    get('nuts') >= 1 && `${fmt(get('nuts'), 0)}g nuts`,
+    get('sterols') >= 300 && `${fmt(get('sterols'), 0)}mg sterols`,
+    get('omega3') >= 100 && `${fmt(get('omega3'), 0)}mg fish ω-3`,
+  ].filter(Boolean);
+  return [`${fmt(get('satFat'))}g sat`, `${fmt(get('solubleFiber'))}g soluble fiber`, `${fmt(get('cholesterol'), 0)}mg chol`,
+    `${fmt(get('sodium'), 0)}mg sodium`, ...extra].join(' · ');
 };
 const itemSummary = it => foodSummary(k => itemValue(it, k));
 
@@ -84,15 +92,14 @@ function viewLog() {
     ${isToday ? '' : '<button type="button" class="pill center" data-act="day:today">Jump to today</button>'}
 
     <section class="card">
-      <h2 class="eyebrow">Limits</h2>
-      <div class="grid2">
-        ${LIMIT_KEYS.map(k => meter(k, tot[k], t[k], 'limit')).join('')}
-      </div>
-      <h2 class="eyebrow gap">Goals</h2>
+      <h2 class="eyebrow">Cholesterol (LDL) levers</h2>
       <div class="grid3">
-        ${meter('fiber', tot.fiber, t.fiber, 'goal')}
-        ${meter('ala', tot.ala, t.ala, 'goal')}
-        ${meter('omega3', omega, t.omega3Weekly, 'weekly')}
+        ${['satFat', 'cholesterol', 'transFat', 'solubleFiber', 'sterols', 'nuts'].map(k => meter(k, tot[k], t[k])).join('')}
+      </div>
+      <h2 class="eyebrow gap">Also important</h2>
+      <div class="grid2">
+        ${['sodium', 'addedSugar', 'fiber'].map(k => meter(k, tot[k], t[k])).join('')}
+        ${meter('omega3', omega, t.omega3Weekly)}
       </div>
     </section>
 
@@ -164,6 +171,9 @@ function chart(points, metric, target) {
     </svg>`;
 }
 
+// Everything with a target except trans fat, whose target is "none" and so has no useful bar chart.
+const HISTORY_METRICS = ['satFat', 'cholesterol', 'solubleFiber', 'sterols', 'nuts', 'sodium', 'addedSugar', 'fiber', 'omega3'];
+
 function viewHistory() {
   const t = S.settings.targets, today = todayKey();
   const metric = S.histMetric, range = S.histRange;
@@ -181,10 +191,10 @@ function viewHistory() {
   return `
     <header class="page-head"><h1>History</h1></header>
     <section class="card">
-      <div class="row-between wrap">
-        <div class="seg" role="group" aria-label="Nutrient">
-          ${['satFat', 'sodium', 'addedSugar', 'fiber', 'ala', 'omega3'].map(k => `<button type="button" data-act="hist:metric" data-key="${k}" aria-pressed="${metric === k}">${labelOf(k)}</button>`).join('')}
-        </div>
+      <div class="row-between">
+        <select class="metric-pick" data-hist-metric aria-label="Nutrient">
+          ${HISTORY_METRICS.map(k => `<option value="${k}" ${metric === k ? 'selected' : ''}>${labelOf(k)}</option>`).join('')}
+        </select>
         <div class="seg" role="group" aria-label="Range">
           ${[7, 30].map(r => `<button type="button" data-act="hist:range" data-range="${r}" aria-pressed="${range === r}">${r}d</button>`).join('')}
         </div>
@@ -222,18 +232,22 @@ function viewHistory() {
 // ── Settings view ─────────────────────────────────────────────
 function viewSettings() {
   const st = S.settings, t = st.targets;
-  const targetRows = [
-    ['satFat', 'Saturated fat (g, max/day)'], ['transFat', 'Trans fat (g, max/day)'], ['addedSugar', 'Added sugar (g, max/day)'],
-    ['sodium', 'Sodium (mg, max/day)'], ['fiber', 'Fiber (g, min/day)'], ['ala', 'Plant omega-3, ALA (mg, min/day)'],
-    ['omega3Weekly', 'Fish omega-3, EPA+DHA (mg, min/week)'],
-  ];
+  const field = ([k, label]) => `<label class="field"><span>${label}</span><input type="number" inputmode="decimal" min="0" step="any" data-setting="targets.${k}" value="${t[k]}"></label>`;
   return `
     <header class="page-head"><h1>Settings</h1></header>
 
     <section class="card">
       <h2>Targets</h2>
+      <h3 class="eyebrow gap">Cholesterol (LDL) levers</h3>
       <div class="fields">
-        ${targetRows.map(([k, label]) => `<label class="field"><span>${label}</span><input type="number" inputmode="decimal" min="0" step="any" data-setting="targets.${k}" value="${t[k]}"></label>`).join('')}
+        ${[['satFat', 'Saturated fat (g, max/day)'], ['cholesterol', 'Dietary cholesterol (mg, max/day)'],
+          ['transFat', 'Trans fat (g, max/day; 0 = avoid, flags from 0.5 g)'], ['solubleFiber', 'Soluble fiber (g, min/day; 10–20 useful)'],
+          ['sterols', 'Plant sterols/stanols (mg, min/day)'], ['nuts', 'Nuts (g, min/day)']].map(field).join('')}
+      </div>
+      <h3 class="eyebrow gap">Also important</h3>
+      <div class="fields">
+        ${[['sodium', 'Sodium (mg, max/day)'], ['addedSugar', 'Added sugar (g, max/day)'], ['fiber', 'Total fiber (g, min/day)'],
+          ['omega3Weekly', 'Fish omega-3, EPA+DHA (mg, min/week)']].map(field).join('')}
       </div>
     </section>
 
@@ -670,7 +684,6 @@ const actions = {
   'form:submit': () => submitItem(),
   'form:delete': () => { const { meal, itemId } = S.sheet; S.sheet = null; renderSheet(); removeItem(meal, String(itemId)); },
   'photo:remove': () => { Object.assign(S.sheet.draft, { photo: null, photoId: null, photoRemoved: true }); renderSheet(); },
-  'hist:metric': el => { S.histMetric = el.dataset.key; render(); },
   'hist:range': el => { S.histRange = Number(el.dataset.range); render(); },
   'cal:month': el => {
     const [y, m] = S.calMonth.split('-').map(Number);
@@ -704,6 +717,7 @@ document.addEventListener('input', e => {
 
 document.addEventListener('change', async e => {
   const el = e.target;
+  if ('histMetric' in el.dataset) { S.histMetric = el.value; render(); return; }
   if (el.dataset.actChange === 'photo') { await handlePhoto(el.files[0]); el.value = ''; return; }
   if (el.dataset.actChange === 'import') { await importBackup(el.files[0]); el.value = ''; return; }
   if (el.dataset.setting) {
