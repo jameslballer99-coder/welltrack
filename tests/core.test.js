@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import {
   addDays, todayKey, round, dayTotals, dayStatus, computeStreak, series, summarize,
   searchFoods, recentFoods, migrateV1Item, migrateLogs, migrateFavs, normalizeBackup, toCSV, emptyDay, DEFAULT_TARGETS,
-  CHECKLIST, mealForTime,
+  CHECKLIST, mealForTime, upgradeBase, upgradeSettings,
 } from '../js/core.js';
-import { FOODS } from '../js/foods.js';
+import { FOODS, LEGACY } from '../js/foods.js';
 
-const item = (name, base, servings = 1) => ({ id: name, name, serving: '1 plate', servings, base: { satFat: 0, transFat: 0, addedSugar: 0, fiber: 0, omega3: 0, ...base } });
+const item = (name, base, servings = 1) => ({ id: name, name, serving: '1 plate', servings, base: { satFat: 0, transFat: 0, addedSugar: 0, sodium: 0, fiber: 0, omega3: 0, ala: 0, ...base } });
+const food = name => FOODS.find(f => f.name === name);
 const day = (meals) => ({ ...emptyDay(), ...meals });
 
 test('addDays crosses month and year boundaries', () => {
@@ -31,6 +32,7 @@ test('dayStatus uses the worst limit ratio', () => {
   assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 10 })] })), 'good');
   assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 16 })] })), 'close');
   assert.equal(dayStatus(day({ Lunch: [item('a', { transFat: 2.5 })] })), 'over');
+  assert.equal(dayStatus(day({ Lunch: [item('soup', { sodium: 2400 })] })), 'over');
 });
 
 test('streak counts consecutive in-limit days and skips an empty today', () => {
@@ -57,7 +59,7 @@ test('search needs every word and ranks prefix matches first', () => {
   assert.ok(names.includes('Hainanese chicken rice'));
   assert.ok(names.indexOf('Brown rice, cooked') > -1);
   assert.deepEqual(searchFoods(FOODS, 'chicken rice').map(f => f.name), ['Hainanese chicken rice']);
-  assert.equal(searchFoods(FOODS, 'KAYA')[0].name, 'Kaya toast');
+  assert.equal(searchFoods(FOODS, 'KAYA')[0].name, 'Kaya toast with butter');
 });
 
 test('recentFoods returns newest distinct foods', () => {
@@ -132,9 +134,51 @@ test('every checklist item maps to a built-in food', () => {
   for (const c of CHECKLIST) assert.ok(FOODS.some(f => f.name === c.food), c.id);
 });
 
+test('untouched old built-in entries get the corrected values, including v1 names', () => {
+  const [v1Laksa] = migrateLogs({ '2026-03-02': { Lunch: [{ id: 1, name: '🇸🇬 Laksa (1 bowl)', serving: '1 bowl', servings: 2, satFat: 16, transFat: 0.4, addedSugar: 8, fiber: 4, omega3: 400 }] } })['2026-03-02'].Lunch;
+  assert.deepEqual(v1Laksa.base, food('Laksa').base);
+  assert.equal(v1Laksa.servings, 2);
+  assert.equal(dayTotals(day({ Lunch: [v1Laksa] })).sodium, 3176);
+
+  assert.deepEqual(upgradeBase('Char kway teow', { satFat: 6, transFat: 0.5, addedSugar: 5, fiber: 2.5, omega3: 30 }), food('Char kway teow').base);
+  assert.deepEqual(upgradeBase('Satay, chicken (4 sticks)', { satFat: 2, transFat: 0.1, addedSugar: 4, fiber: 0.5, omega3: 50 }), food('Chicken satay, with sauce').base);
+});
+
+test('edited or custom entries keep their numbers and split omega-3 by food type', () => {
+  // Same name as a built-in but the user changed sat fat, so it is not overwritten.
+  const edited = upgradeBase('Laksa', { satFat: 12, transFat: 0.2, addedSugar: 4, fiber: 2, omega3: 200 });
+  assert.equal(edited.satFat, 12);
+  assert.equal(edited.sodium, 0);
+  assert.equal(edited.omega3, 0);
+  assert.equal(edited.ala, 200);
+
+  const fish = upgradeBase('Grilled saba fish', { satFat: 3, transFat: 0, addedSugar: 0, fiber: 0, omega3: 1800 });
+  assert.equal(fish.omega3, 1800);
+  assert.equal(fish.ala, 0);
+
+  const already = { ...food('Apple').base };
+  assert.equal(upgradeBase('Apple', already), already);
+});
+
+test('old settings move fiber 15 → 30 but keep custom targets', () => {
+  assert.equal(upgradeSettings({ targets: { satFat: 20, fiber: 15, omega3Weekly: 3500 } }).targets.fiber, 30);
+  assert.equal(upgradeSettings({ targets: { satFat: 13, fiber: 25 } }).targets.fiber, 25);
+  assert.equal(upgradeSettings({ targets: { satFat: 13, fiber: 25 } }).targets.satFat, 13);
+  assert.equal(upgradeSettings({ targets: { fiber: 15 } }).targets.sodium, 2000);
+  const nuts = upgradeSettings({ checkFoods: { nuts: { name: 'Walnuts', serving: '28g', servings: 1, base: { satFat: 1.7, transFat: 0, addedSugar: 0, fiber: 1.9, omega3: 2500 } } } });
+  assert.equal(nuts.checkFoods.nuts.base.ala, 2500);
+  assert.equal(nuts.checkFoods.nuts.base.omega3, 0);
+});
+
+test('every legacy row points at a food that exists', () => {
+  for (const row of LEGACY) assert.ok(food(row[6]), row[6]);
+});
+
 test('food database rows are complete', () => {
+  assert.equal(new Set(FOODS.map(f => f.name)).size, FOODS.length, 'duplicate food names');
   for (const f of FOODS) {
     assert.ok(f.name && f.serving, f.name);
+    assert.equal(Object.keys(f.base).length, 7, f.name);
     for (const v of Object.values(f.base)) assert.ok(Number.isFinite(v) && v >= 0, f.name);
   }
 });

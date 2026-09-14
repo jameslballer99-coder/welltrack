@@ -11,7 +11,7 @@ export const MODELS = [
 const SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['found', 'name', 'serving', 'satFat', 'transFat', 'addedSugar', 'fiber', 'omega3', 'confidence'],
+  required: ['found', 'name', 'serving', 'satFat', 'transFat', 'addedSugar', 'sodium', 'fiber', 'omega3', 'ala', 'confidence'],
   properties: {
     found: { type: 'boolean', description: 'false if no food can be identified' },
     name: { type: 'string', description: 'Specific dish name, e.g. "Char kway teow"' },
@@ -19,14 +19,21 @@ const SCHEMA = {
     satFat: { type: 'number', description: 'Saturated fat, grams' },
     transFat: { type: 'number', description: 'Trans fat, grams' },
     addedSugar: { type: 'number', description: 'Added sugar, grams' },
+    sodium: { type: 'number', description: 'Sodium, milligrams, including sauces, gravy and soup' },
     fiber: { type: 'number', description: 'Dietary fiber, grams' },
-    omega3: { type: 'number', description: 'Omega-3 fatty acids (ALA+EPA+DHA), milligrams' },
+    omega3: { type: 'number', description: 'EPA+DHA omega-3 from fish and seafood only, milligrams' },
+    ala: { type: 'number', description: 'Plant omega-3 (ALA) from seeds, nuts, oils and vegetables, milligrams' },
     confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
   },
 };
 
+// Anchors from Singapore Health Promotion Board figures keep hawker estimates from drifting low.
 const GUIDE = `You are a nutritionist who knows Singapore hawker and wider Asian food well, as well as Western food.
-Estimate nutrients for one serving of the portion described. Be realistic about cooking oil, lard, coconut milk and sweetened drinks.
+Estimate nutrients for one serving of the portion described. Hawker portions are large and cooked with lard, ghee,
+coconut milk, palm oil and salty sauces, so do not underestimate. For scale, Health Promotion Board figures per plate/bowl:
+char kway teow 29 g saturated fat and 1,460 mg sodium; laksa 18 g and 1,590 mg; roasted chicken rice 8.7 g and 1,290 mg;
+nasi lemak 7.6 g and 840 mg; fishball noodle soup 2.4 g and 2,910 mg; mee siam 8.6 g and 2,660 mg.
+Only count EPA+DHA as omega3 (fish, seafood); count plant omega-3 as ala.
 If the input is not a food, set found to false and use 0 for every number.`;
 
 async function call({ apiKey, model, content }) {

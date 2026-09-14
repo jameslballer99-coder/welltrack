@@ -1,7 +1,7 @@
 // Persistence: small JSON in localStorage, photos in IndexedDB (localStorage caps out around 5 MB).
-import { DEFAULT_TARGETS, migrateLogs, migrateFoodCache, migrateFavs, foodKey } from './core.js';
+import { DEFAULT_TARGETS, migrateLogs, migrateFoodCache, migrateFavs, foodKey, upgradeFoods, upgradeSettings } from './core.js';
 
-const K = { logs: 'wt2.logs', checks: 'wt2.checks', foods: 'wt2.foods', favs: 'wt2.favs', settings: 'wt2.settings' };
+const K = { logs: 'wt2.logs', checks: 'wt2.checks', foods: 'wt2.foods', favs: 'wt2.favs', settings: 'wt2.settings', schema: 'wt2.schema' };
 const V1 = { logs: 'welltrack_v4', backup: 'welltrack_v4_backup', checks: 'welltrack_checklist_v1', apiKey: 'welltrack_apikey', cache: 'welltrack_food_cache_v2', favs: 'welltrack_favs_v1' };
 
 export const DEFAULT_SETTINGS = {
@@ -22,11 +22,24 @@ const write = (key, value) => {
 };
 
 export function loadAll() {
-  const settings = read(K.settings, {});
+  let settings = read(K.settings, {});
+  let logs = read(K.logs, {});
+  let foods = read(K.foods, []);
+
+  // One-time upgrade to schema 2 (sodium, split omega-3, corrected hawker values).
+  // The pre-upgrade data is kept alongside in case anything needs recovering.
+  if (localStorage.getItem(K.schema) !== '2') {
+    try { localStorage.setItem(`${K.logs}.before-schema2`, localStorage.getItem(K.logs) || '{}'); } catch { /* storage full: upgrade anyway */ }
+    logs = migrateLogs(logs);
+    foods = upgradeFoods(foods);
+    if (settings.targets || settings.checkFoods) settings = upgradeSettings(settings);
+    if (write(K.logs, logs) && write(K.foods, foods) && write(K.settings, settings)) localStorage.setItem(K.schema, '2');
+  }
+
   return {
-    logs: read(K.logs, {}),
+    logs,
     checks: read(K.checks, {}),
-    foods: read(K.foods, []),
+    foods,
     favs: read(K.favs, []),
     settings: { ...DEFAULT_SETTINGS, ...settings, targets: { ...DEFAULT_TARGETS, ...settings.targets }, reminder: { ...DEFAULT_SETTINGS.reminder, ...settings.reminder } },
   };

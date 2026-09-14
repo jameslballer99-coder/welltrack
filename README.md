@@ -1,6 +1,6 @@
 # WellTrack
 
-A phone-first food tracker for heart health: saturated fat, trans fat and added sugar limits, fiber and omega-3 goals, and a daily heart-healthy foods checklist. The food list covers Singapore hawker dishes, and Claude can estimate nutrients from a photo or a dish name.
+A phone-first food tracker for heart health. It sets daily limits for saturated fat, trans fat, added sugar and sodium, and goals for fiber, plant omega-3 (ALA) and fish omega-3 (EPA+DHA, weekly). It also has a daily checklist of heart-healthy foods. The food list covers Singapore hawker dishes, with saturated fat, sodium and fiber from Health Promotion Board figures where published, and Claude can estimate nutrients from a photo or a dish name.
 
 It's a static web app with no build step and no server. Your data stays in your browser.
 

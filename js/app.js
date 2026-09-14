@@ -1,5 +1,5 @@
 import {
-  NUTRIENTS, NUTRIENT_KEYS, MEALS, CHECKLIST, todayKey, addDays, parseDateKey, toDateKey, fmt, num, round,
+  NUTRIENT_KEYS, LIMIT_KEYS, nutrient, MEALS, CHECKLIST, todayKey, addDays, parseDateKey, toDateKey, fmt, num, round,
   cleanBase, itemValue, emptyDay, dayItems, dayTotals, totals, computeStreak, sumRange, series, summarize,
   searchFoods, recentFoods, foodKey, normalizeBackup, toCSV, mealForTime,
 } from './core.js';
@@ -7,12 +7,12 @@ import { FOODS } from './foods.js';
 import { loadAll, save, upsertFood, photos, extractPhotos, migrateFromV1IfPresent } from './store.js';
 import { MODELS, estimateByName, estimateFromPhoto, resizeImage } from './ai.js';
 
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const dp = key => (key === 'omega3' ? 0 : 1);
-const unitOf = key => NUTRIENTS.find(n => n.key === key).unit;
-const labelOf = key => NUTRIENTS.find(n => n.key === key).label;
+const dp = key => nutrient(key).dp;
+const unitOf = key => nutrient(key).unit;
+const labelOf = key => nutrient(key).label;
 
 let S;
 
@@ -40,17 +40,21 @@ function meter(key, value, target, kind) {
   const state = kind === 'limit' ? (pct > 1 ? 'over' : pct > 0.75 ? 'close' : 'good') : (pct >= 1 ? 'met' : 'progress');
   const note = kind === 'limit'
     ? (pct > 1 ? `${fmt(value - target, d)}${u} over` : `${fmt(target - value, d)}${u} left`)
-    : (pct >= 1 ? 'Goal met ✓' : `${fmt(target - value, d)}${u} to go`);
+    : (pct >= 1 ? 'Goal met ✓' : `${fmt(target - value, d)}${u} to go`) + (kind === 'weekly' ? ' · 7 days' : '');
   return `
     <div class="meter ${state}">
-      <div class="meter-top"><span>${labelOf(key)}${kind === 'weekly' ? ' · last 7d' : ''}</span><span class="note">${note}</span></div>
+      <div class="meter-top"><span>${labelOf(key)}</span><span class="note">${note}</span></div>
       <div class="bar" role="progressbar" aria-label="${labelOf(key)}" aria-valuemin="0" aria-valuemax="${target}" aria-valuenow="${round(value, d)}"><i style="width:${Math.min(pct, 1) * 100}%"></i></div>
       <div class="meter-val"><b>${fmt(value, d)}</b> / ${target}${u}</div>
     </div>`;
 }
 
-const itemSummary = it =>
-  `${fmt(itemValue(it, 'satFat'))}g sat · ${fmt(itemValue(it, 'addedSugar'))}g sugar · ${fmt(itemValue(it, 'fiber'))}g fiber · ${fmt(itemValue(it, 'omega3'), 0)}mg ω-3`;
+// Short per-food line: the two biggest heart levers for hawker food first, fish omega-3 only when present.
+const foodSummary = (get) => {
+  const fish = get('omega3');
+  return `${fmt(get('satFat'))}g sat · ${fmt(get('sodium'), 0)}mg sodium · ${fmt(get('fiber'))}g fiber${fish >= 100 ? ` · ${fmt(fish, 0)}mg fish ω-3` : ''}`;
+};
+const itemSummary = it => foodSummary(k => itemValue(it, k));
 
 function dayLabel(key) {
   const t = todayKey();
@@ -81,12 +85,13 @@ function viewLog() {
 
     <section class="card">
       <h2 class="eyebrow">Limits</h2>
-      <div class="grid3">
-        ${['satFat', 'transFat', 'addedSugar'].map(k => meter(k, tot[k], t[k], 'limit')).join('')}
+      <div class="grid2">
+        ${LIMIT_KEYS.map(k => meter(k, tot[k], t[k], 'limit')).join('')}
       </div>
       <h2 class="eyebrow gap">Goals</h2>
-      <div class="grid2">
+      <div class="grid3">
         ${meter('fiber', tot.fiber, t.fiber, 'goal')}
+        ${meter('ala', tot.ala, t.ala, 'goal')}
         ${meter('omega3', omega, t.omega3Weekly, 'weekly')}
       </div>
     </section>
@@ -113,7 +118,7 @@ function viewLog() {
       return `
       <section class="card meal">
         <header class="row-between">
-          <div><h2>${meal}</h2>${items.length ? `<span class="sub">${fmt(mt.satFat)}g sat · ${fmt(mt.fiber)}g fiber</span>` : ''}</div>
+          <div><h2>${meal}</h2>${items.length ? `<span class="sub">${fmt(mt.satFat)}g sat · ${fmt(mt.sodium, 0)}mg sodium · ${fmt(mt.fiber)}g fiber</span>` : ''}</div>
           <button type="button" class="btn small" data-act="meal:add" data-meal="${meal}">+ Add</button>
         </header>
         ${items.length ? `<ul class="items">${items.map(it => `
@@ -138,7 +143,7 @@ function chart(points, metric, target) {
   const W = 320, H = 120, pad = 4, n = points.length, bw = (W - pad * 2) / n;
   const max = Math.max(target * 1.5, ...points.map(p => p.totals[metric]));
   const y = v => H - (v / max) * H;
-  const kind = NUTRIENTS.find(x => x.key === metric).kind;
+  const kind = nutrient(metric).kind;
   const cls = v => (kind === 'limit' ? (v > target ? 'over' : v > target * 0.75 ? 'close' : 'good') : (v >= target ? 'good' : 'progress'));
   return `
     <svg viewBox="0 0 ${W} ${H + 18}" class="chart" role="img" aria-label="${labelOf(metric)} over the last ${n} days">
@@ -178,7 +183,7 @@ function viewHistory() {
     <section class="card">
       <div class="row-between wrap">
         <div class="seg" role="group" aria-label="Nutrient">
-          ${['satFat', 'addedSugar', 'fiber', 'omega3'].map(k => `<button type="button" data-act="hist:metric" data-key="${k}" aria-pressed="${metric === k}">${labelOf(k)}</button>`).join('')}
+          ${['satFat', 'sodium', 'addedSugar', 'fiber', 'ala', 'omega3'].map(k => `<button type="button" data-act="hist:metric" data-key="${k}" aria-pressed="${metric === k}">${labelOf(k)}</button>`).join('')}
         </div>
         <div class="seg" role="group" aria-label="Range">
           ${[7, 30].map(r => `<button type="button" data-act="hist:range" data-range="${r}" aria-pressed="${range === r}">${r}d</button>`).join('')}
@@ -190,7 +195,7 @@ function viewHistory() {
         <div><b>${sum.loggedDays ? Math.round((sum.withinLimits / sum.loggedDays) * 100) : 0}%</b><span>within limits</span></div>
         <div><b>${fmt(sum.avg[metric], dp(metric))}${unitOf(metric)}</b><span>daily avg ${labelOf(metric).toLowerCase()}</span></div>
       </div>
-      <p class="hint">Dashed line: ${metric === 'omega3' ? 'weekly omega-3 target ÷ 7' : 'your daily target'}. Tap a bar to open that day.</p>
+      <p class="hint">Dashed line: ${metric === 'omega3' ? 'weekly fish omega-3 target ÷ 7' : 'your daily target'}. Tap a bar to open that day.</p>
     </section>
 
     <section class="card">
@@ -219,7 +224,8 @@ function viewSettings() {
   const st = S.settings, t = st.targets;
   const targetRows = [
     ['satFat', 'Saturated fat (g, max/day)'], ['transFat', 'Trans fat (g, max/day)'], ['addedSugar', 'Added sugar (g, max/day)'],
-    ['fiber', 'Fiber (g, min/day)'], ['omega3Weekly', 'Omega-3 (mg, min/week)'],
+    ['sodium', 'Sodium (mg, max/day)'], ['fiber', 'Fiber (g, min/day)'], ['ala', 'Plant omega-3, ALA (mg, min/day)'],
+    ['omega3Weekly', 'Fish omega-3, EPA+DHA (mg, min/week)'],
   ];
   return `
     <header class="page-head"><h1>Settings</h1></header>
@@ -306,7 +312,7 @@ function pickRow(f, i) {
   return `<li class="pick">
     <button type="button" class="pick-main" data-act="pick:food" data-i="${i}">
       <span class="name">${esc(f.name)}${f.tag ? ` <em class="tag">${f.tag}</em>` : ''}</span>
-      <span class="sub">${esc(f.serving)} · ${fmt(f.base.satFat)}g sat · ${fmt(f.base.fiber)}g fiber · ${fmt(f.base.omega3, 0)}mg ω-3</span>
+      <span class="sub">${esc(f.serving)} · ${foodSummary(k => f.base[k] || 0)}</span>
     </button>
     <button type="button" class="icon star ${fav ? 'on' : ''}" data-act="fav:toggle" data-key="${esc(foodKey(f.name))}" aria-pressed="${fav}" aria-label="Favourite ${esc(f.name)}">★</button>
   </li>`;

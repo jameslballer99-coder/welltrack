@@ -1,16 +1,24 @@
 // Pure logic: no DOM, no storage. Everything here is covered by tests/core.test.js.
+import { FOODS, LEGACY } from './foods.js';
 
+// `dp` is how many decimals to keep and show. Omega-3 is split because guidelines count EPA+DHA
+// from fish; plant ALA converts to those poorly, so it gets its own daily goal.
 export const NUTRIENTS = [
-  { key: 'satFat',     label: 'Sat fat',     unit: 'g',  kind: 'limit' },
-  { key: 'transFat',   label: 'Trans fat',   unit: 'g',  kind: 'limit' },
-  { key: 'addedSugar', label: 'Added sugar', unit: 'g',  kind: 'limit' },
-  { key: 'fiber',      label: 'Fiber',       unit: 'g',  kind: 'goal' },
-  { key: 'omega3',     label: 'Omega-3',     unit: 'mg', kind: 'weekly' },
+  { key: 'satFat',     label: 'Sat fat',       unit: 'g',  kind: 'limit',  dp: 1 },
+  { key: 'transFat',   label: 'Trans fat',     unit: 'g',  kind: 'limit',  dp: 1 },
+  { key: 'addedSugar', label: 'Added sugar',   unit: 'g',  kind: 'limit',  dp: 1 },
+  { key: 'sodium',     label: 'Sodium',        unit: 'mg', kind: 'limit',  dp: 0 },
+  { key: 'fiber',      label: 'Fiber',         unit: 'g',  kind: 'goal',   dp: 1 },
+  { key: 'ala',        label: 'Plant omega-3', unit: 'mg', kind: 'goal',   dp: 0 },
+  { key: 'omega3',     label: 'Fish omega-3',  unit: 'mg', kind: 'weekly', dp: 0 },
 ];
 export const NUTRIENT_KEYS = NUTRIENTS.map(n => n.key);
 export const LIMIT_KEYS = NUTRIENTS.filter(n => n.kind === 'limit').map(n => n.key);
+export const nutrient = key => NUTRIENTS.find(n => n.key === key);
 
-export const DEFAULT_TARGETS = { satFat: 20, transFat: 2, addedSugar: 50, fiber: 15, omega3Weekly: 3500 };
+// Sodium: WHO/HPB under 2,000 mg. Fiber: adults need 25–38 g. Plant omega-3: adequate intake
+// 1.1–1.6 g/day. Fish omega-3 (EPA+DHA): ~500 mg/day, i.e. two portions of oily fish a week.
+export const DEFAULT_TARGETS = { satFat: 20, transFat: 2, addedSugar: 50, sodium: 2000, fiber: 30, ala: 1600, omega3Weekly: 3500 };
 export const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 // `food` is the built-in food a tick logs until the user edits that entry; their version is then remembered.
 export const CHECKLIST = [
@@ -46,7 +54,7 @@ export const num = v => { const n = parseFloat(v); return Number.isFinite(n) && 
 
 export function cleanBase(src = {}) {
   const base = {};
-  for (const k of NUTRIENT_KEYS) base[k] = round(num(src[k]), k === 'omega3' ? 0 : 2);
+  for (const n of NUTRIENTS) base[n.key] = round(num(src[n.key]), n.dp === 0 ? 0 : 2);
   return base;
 }
 
@@ -144,21 +152,48 @@ export function recentFoods(logs, limit = 8) {
   return out;
 }
 
-// ── Migration from WellTrack v1 ───────────────────────────────
+// ── Migration ─────────────────────────────────────────────────
 // v1 stored nutrient values already multiplied by servings, and photos inline as data URLs.
+// The base keeps only the old five nutrients; upgradeBase() fills in the rest.
+const OLD_KEYS = ['satFat', 'transFat', 'addedSugar', 'fiber', 'omega3'];
 export function migrateV1Item(old, idx = 0) {
   const servings = num(old.servings) || 1;
   const base = {};
-  for (const k of NUTRIENT_KEYS) base[k] = num(old[k]) / servings;
+  for (const k of OLD_KEYS) base[k] = round(num(old[k]) / servings, 2);
   return {
     id: String(old.id ?? `${Date.now()}-${idx}`),
     name: String(old.name || 'Food'),
     serving: String(old.serving || '1 serving'),
     servings,
-    base: cleanBase(base),
+    base,
     ...(old.photo ? { photo: old.photo } : {}), // caller moves this into IndexedDB
   };
 }
+
+const STOP = new Set(['cup', 'cooked', 'plate', 'bowl', 'piece', 'pieces', 'slice', 'slices', 'large', 'medium', 'with', 'and', 'the', 'tbsp', 'sticks', 'lean', 'plain']);
+const words = name => foodKey(name).split(' ').filter(w => w.length > 2 && !STOP.has(w) && !/\d/.test(w));
+// Word-start matches only, so "eel" doesn't catch "peeled".
+const SEAFOOD = /\b(fish|salmon|tuna|sardine|mackerel|prawn|shrimp|squid|sotong|crab|oyster|seafood|cod|anchov|ikan|lala|clam|mussel|scallop|eel|saba|unagi)/;
+
+// Entries saved before sodium and the omega-3 split have no `ala` key. If an entry still carries a
+// built-in food's old numbers untouched, it gets that food's corrected values. Otherwise the user's
+// numbers are kept, sodium starts unknown (0), and omega-3 counts as fish only for seafood.
+export function upgradeBase(name, base) {
+  if (!base || 'ala' in base) return base;
+  const w = new Set(words(name));
+  const legacy = LEGACY.find(([oldName, ...rest]) =>
+    OLD_KEYS.every((k, i) => Math.abs(num(base[k]) - rest[i]) < 0.011) && words(oldName).some(x => w.has(x)));
+  if (legacy) {
+    const food = FOODS.find(f => f.name === legacy[6]);
+    if (food) return { ...food.base };
+  }
+  const fishy = SEAFOOD.test(foodKey(name));
+  return cleanBase({ ...base, omega3: fishy ? base.omega3 : 0, ala: fishy ? 0 : base.omega3 });
+}
+
+export const upgradeItem = it => ('ala' in (it.base || {}) ? it : { ...it, base: upgradeBase(it.name, it.base) });
+export const upgradeFoods = foods => (foods || []).map(upgradeItem);
+export const upgradeCheckFoods = map => Object.fromEntries(Object.entries(map || {}).map(([k, f]) => [k, upgradeItem(f)]));
 
 const isV2Item = it => it && typeof it === 'object' && it.base && typeof it.base === 'object';
 
@@ -168,7 +203,7 @@ export function migrateLogs(logs) {
   for (const [key, day] of Object.entries(logs || {})) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || !day) continue;
     const d = emptyDay();
-    for (const m of MEALS) d[m] = (day[m] || []).map(it => (isV2Item(it) ? it : migrateV1Item(it, n++)));
+    for (const m of MEALS) d[m] = (day[m] || []).map(it => upgradeItem(isV2Item(it) ? it : migrateV1Item(it, n++)));
     if (dayItems(d).length) out[key] = d;
   }
   return out;
@@ -178,7 +213,18 @@ export function migrateLogs(logs) {
 export function migrateFoodCache(cache) {
   return Object.values(cache || {})
     .filter(f => f && f.name)
-    .map(f => ({ name: f.name, serving: f.serving || '1 serving', base: cleanBase(f), source: f.source === 'user' ? 'user' : 'ai' }));
+    .map(f => upgradeItem({
+      name: f.name, serving: f.serving || '1 serving', source: f.source === 'user' ? 'user' : 'ai',
+      base: Object.fromEntries(OLD_KEYS.map(k => [k, num(f[k])])),
+    }));
+}
+
+// Targets saved with the old fiber default (15 g) move to the new default.
+export function upgradeSettings(settings) {
+  if (!settings) return settings;
+  const targets = { ...DEFAULT_TARGETS, ...settings.targets };
+  if (settings.targets && !('sodium' in settings.targets) && settings.targets.fiber === 15) targets.fiber = DEFAULT_TARGETS.fiber;
+  return { ...settings, targets, checkFoods: upgradeCheckFoods(settings.checkFoods) };
 }
 
 // v1 favourites were full display names like "🇸🇬 Laksa (1 bowl)"; v2 stores food keys.
@@ -189,8 +235,8 @@ export function normalizeBackup(data) {
   if (!data || typeof data !== 'object') throw new Error('Not a WellTrack backup');
   if (data.app === 'welltrack' && data.version === 2) {
     return {
-      logs: migrateLogs(data.logs), checks: data.checks || {}, foods: data.foods || [],
-      favs: data.favs || [], settings: data.settings || null, photos: data.photos || {},
+      logs: migrateLogs(data.logs), checks: data.checks || {}, foods: upgradeFoods(data.foods),
+      favs: data.favs || [], settings: upgradeSettings(data.settings) || null, photos: data.photos || {},
     };
   }
   if (data.allLogs) {
@@ -204,13 +250,13 @@ export function normalizeBackup(data) {
 
 // ── CSV ───────────────────────────────────────────────────────
 export function toCSV(logs) {
-  const head = ['Date', 'Meal', 'Food', 'Serving', 'Servings', 'Sat fat (g)', 'Trans fat (g)', 'Added sugar (g)', 'Fiber (g)', 'Omega-3 (mg)'];
+  const head = ['Date', 'Meal', 'Food', 'Serving', 'Servings', ...NUTRIENTS.map(n => `${n.label} (${n.unit})`)];
   const rows = [head];
   for (const key of Object.keys(logs).sort()) {
     for (const meal of MEALS) {
       for (const it of logs[key][meal] || []) {
         rows.push([key, meal, it.name, it.serving, it.servings,
-          ...NUTRIENT_KEYS.map(k => round(itemValue(it, k), k === 'omega3' ? 0 : 2))]);
+          ...NUTRIENTS.map(n => round(itemValue(it, n.key), n.dp === 0 ? 0 : 2))]);
       }
     }
   }
