@@ -60,6 +60,7 @@ js/ai.js              Claude API calls with structured JSON output
 js/app.js             UI rendering and events
 sw.js                 offline cache
 tests/core.test.js    node:test suite
+tools/mark.py         draws every icon in icons/ (python tools/mark.py; needs Pillow)
 ```
 
 ## Privacy

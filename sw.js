@@ -8,6 +8,7 @@ const ASSETS = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/core.js', 'js/foods.js', 'js/store.js', 'js/ai.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-192.png', 'icons/icon-maskable-512.png',
+  'icons/apple-touch-icon.png', 'icons/favicon-32.png',
 ];
 
 self.addEventListener('install', event => {
