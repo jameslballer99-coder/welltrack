@@ -5,6 +5,6 @@
   "type": "module",
   "description": "Heart-health food tracker PWA. No build step — see README.",
   "scripts": {
-    "test": "node --test tests/"
+    "test": "node --test \"tests/*.test.js\""
   }
 }

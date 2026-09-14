@@ -26,7 +26,7 @@ Then open http://localhost:8080 (or double-click `serve.bat`).
 ## Tests
 
 ```bash
-node --test tests/
+node --test "tests/*.test.js"
 ```
 
 GitHub Actions runs these on every push.
