@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Track saturated fat, sugar, fiber and omega-3 — built for Singapore hawker food.">
-  <meta name="theme-color" content="#3f6f4e" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1e5a3c" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#141816" media="(prefers-color-scheme: dark)">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -13,10 +13,28 @@
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <!-- Inline so the very first paint is brand green, before any CSS or JS has loaded. -->
+  <style>
+    html { background: #1e5a3c; }
+    #splash { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: #1e5a3c; transition: opacity 0.35s ease; }
+    #splash img { width: 112px; height: 112px; border-radius: 26px; }
+    #splash.gone { opacity: 0; pointer-events: none; }
+  </style>
   <link rel="stylesheet" href="css/app.css">
   <title>WellTrack</title>
 </head>
 <body>
+  <div id="splash" aria-hidden="true"><img src="icons/icon-maskable-512.png" alt=""></div>
+  <script>
+    // The app calls this once it has drawn. The timer is a safety net so the splash can never get stuck.
+    window.hideSplash = function () {
+      var s = document.getElementById('splash');
+      if (!s || s.classList.contains('gone')) return;
+      s.classList.add('gone');
+      setTimeout(function () { s.remove(); document.documentElement.style.background = 'var(--bg)'; }, 400);
+    };
+    setTimeout(window.hideSplash, 3000);
+  </script>
   <div class="shell">
     <main id="main" tabindex="-1"><p class="loading">Loading…</p></main>
   </div>

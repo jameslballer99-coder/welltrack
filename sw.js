@@ -12,7 +12,8 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
+  // cache: 'reload' skips the browser's HTTP cache, so a new version never precaches stale files.
+  event.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))));
   if (DEV) self.skipWaiting();
 });
 
@@ -32,8 +33,8 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return; // never touch Anthropic API calls
 
-  // In development, or for page loads, go to the network first so edits show up; fall back to cache offline.
-  if (DEV || req.mode === 'navigate') {
+  // In development go to the network first so edits show up; fall back to cache offline.
+  if (DEV) {
     event.respondWith(
       fetch(req, DEV ? { cache: 'no-store' } : undefined)
         .then(res => { if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); } return res; })
@@ -42,8 +43,13 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Deployed assets are pinned to this version's cache, so a page never mixes old and new modules.
-  event.respondWith(caches.match(req).then(r => r || fetch(req)));
+  // Deployed: the page and its modules all come from this version's cache, so they always match.
+  // A new deploy installs a new worker, the app shows "Reload", and the reload picks up the new set.
+  if (req.mode === 'navigate') {
+    event.respondWith(caches.match('index.html').then(r => r || fetch(req)));
+    return;
+  }
+  event.respondWith(caches.match(req, { ignoreSearch: true }).then(r => r || fetch(req)));
 });
 
 self.addEventListener('notificationclick', event => {
