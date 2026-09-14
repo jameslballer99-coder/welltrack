@@ -21,12 +21,13 @@ export const NUTRIENT_KEYS = NUTRIENTS.map(n => n.key);
 export const LIMIT_KEYS = NUTRIENTS.filter(n => n.kind === 'limit').map(n => n.key);
 export const nutrient = key => NUTRIENTS.find(n => n.key === key);
 
-// Cholesterol-lowering (LDL) targets plus the Portfolio diet: sat fat under 6% of calories (AHA),
+// Cholesterol-lowering (LDL) targets plus the Portfolio diet: sat fat 15 g (between the AHA's 6% of
+// 2,000 kcal, 13 g, and the general 10% line, ~20 g; the user's chosen starting point),
 // no trans fat, dietary cholesterol ≤200 mg, soluble fiber 10–20 g, plant sterols 2 g, nuts 45 g.
 // Also: sodium ≤2,000 mg (blood pressure), added sugar ≤36 g (triglycerides), total fiber 35 g,
 // fish omega-3 ~500 mg a day, counted over the week because fish isn't eaten daily.
 export const DEFAULT_TARGETS = {
-  satFat: 13, transFat: 0, cholesterol: 200, solubleFiber: 10, sterols: 2000, nuts: 45,
+  satFat: 15, transFat: 0, cholesterol: 200, solubleFiber: 10, sterols: 2000, nuts: 45,
   sodium: 2000, addedSugar: 36, fiber: 35, omega3Weekly: 3500,
 };
 
@@ -245,12 +246,14 @@ export function migrateFoodCache(cache) {
 }
 
 // Targets saved before the LDL-focused set (no `cholesterol` target) are replaced by it, as the
-// user asked; targets set after that are kept.
+// user asked; targets set after that are kept. The sat fat default then moved 13 → 15 g, so a saved
+// 13 (the old default) follows it once; `satFatReviewed` stops that repeating if 13 is chosen again.
 export function upgradeSettings(settings) {
   if (!settings) return settings;
   const current = settings.targets && 'cholesterol' in settings.targets;
   const targets = current ? { ...DEFAULT_TARGETS, ...settings.targets } : { ...DEFAULT_TARGETS };
-  return { ...settings, targets, checkFoods: upgradeCheckFoods(settings.checkFoods) };
+  if (current && targets.satFat === 13 && !settings.satFatReviewed) targets.satFat = DEFAULT_TARGETS.satFat;
+  return { ...settings, targets, satFatReviewed: true, checkFoods: upgradeCheckFoods(settings.checkFoods) };
 }
 
 // v1 favourites were full display names like "🇸🇬 Laksa (1 bowl)"; v2 stores food keys.

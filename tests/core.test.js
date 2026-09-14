@@ -33,7 +33,8 @@ test('dayStatus uses the worst limit ratio', () => {
   assert.equal(dayStatus(undefined), 'empty');
   assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 5 })] })), 'good');
   assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 12 })] })), 'close');
-  assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 14 })] })), 'over');
+  assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 15 })] })), 'close');
+  assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 15.5 })] })), 'over');
   assert.equal(dayStatus(day({ Lunch: [item('soup', { sodium: 2400 })] })), 'over');
   assert.equal(dayStatus(day({ Breakfast: [item('eggs', { cholesterol: 372 })] })), 'over');
 });
@@ -185,13 +186,18 @@ test('schema-2 entries (sodium, split omega-3) gain cholesterol, soluble fiber, 
 
 test('saved targets from before the LDL set are replaced by it; newer custom targets stay', () => {
   const old = upgradeSettings({ targets: { satFat: 20, transFat: 2, addedSugar: 50, sodium: 2000, fiber: 30, ala: 1600, omega3Weekly: 3500 } }).targets;
-  assert.equal(old.satFat, 13);
+  assert.equal(old.satFat, 15);
   assert.equal(old.transFat, 0);
   assert.equal(old.cholesterol, 200);
   assert.equal(old.fiber, 35);
   assert.equal(old.addedSugar, 36);
   assert.equal(old.nuts, 45);
   assert.equal(upgradeSettings({ targets: { ...DEFAULT_TARGETS, satFat: 10 } }).targets.satFat, 10);
+
+  // A saved 13 g was the previous default, so it moves to 15 g once, and not again if re-chosen.
+  const moved = upgradeSettings({ targets: { ...DEFAULT_TARGETS, satFat: 13 } });
+  assert.equal(moved.targets.satFat, 15);
+  assert.equal(upgradeSettings({ ...moved, targets: { ...moved.targets, satFat: 13 } }).targets.satFat, 13);
 
   const nuts = upgradeSettings({ checkFoods: { nuts: { name: 'Walnuts', serving: '28g', servings: 1, base: { satFat: 1.7, transFat: 0, addedSugar: 0, fiber: 1.9, omega3: 2500 } } } });
   assert.equal(nuts.checkFoods.nuts.base.ala, 2500);

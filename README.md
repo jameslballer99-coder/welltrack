@@ -1,6 +1,6 @@
 # WellTrack
 
-A phone-first food tracker for lowering LDL cholesterol. The main targets follow the Portfolio diet: saturated fat ≤13 g, no trans fat, dietary cholesterol ≤200 mg, soluble fiber 10–20 g, plant sterols 2 g and nuts 45 g. It also tracks sodium ≤2,000 mg, added sugar ≤36 g, total fiber 35 g and fish omega-3 (EPA+DHA, weekly). It also has a daily checklist of heart-healthy foods. The food list covers Singapore hawker dishes, with saturated fat, sodium and fiber from Health Promotion Board figures where published, and Claude can estimate nutrients from a photo or a dish name.
+A phone-first food tracker for lowering LDL cholesterol. The main targets follow the Portfolio diet: saturated fat ≤15 g, no trans fat, dietary cholesterol ≤200 mg, soluble fiber 10–20 g, plant sterols 2 g and nuts 45 g. It also tracks sodium ≤2,000 mg, added sugar ≤36 g, total fiber 35 g and fish omega-3 (EPA+DHA, weekly). It also has a daily checklist of heart-healthy foods. The food list covers Singapore hawker dishes, with saturated fat, sodium and fiber from Health Promotion Board figures where published, and Claude can estimate nutrients from a photo or a dish name.
 
 It's a static web app with no build step and no server. Your data stays in your browser.
 
