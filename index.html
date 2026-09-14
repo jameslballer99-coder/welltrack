@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Track saturated fat, sugar, fiber and omega-3 — built for Singapore hawker food.">
+  <meta name="theme-color" content="#3f6f4e" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#141816" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="WellTrack">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/app.css">
+  <title>WellTrack</title>
+</head>
+<body>
+  <div class="shell">
+    <main id="main" tabindex="-1"><p class="loading">Loading…</p></main>
+  </div>
+
+  <nav id="nav" aria-label="Main">
+    <button type="button" data-act="nav" data-view="log" aria-current="page"><span aria-hidden="true">🍽️</span>Log</button>
+    <button type="button" data-act="nav" data-view="history"><span aria-hidden="true">📅</span>History</button>
+    <button type="button" data-act="nav" data-view="settings"><span aria-hidden="true">⚙️</span>Settings</button>
+  </nav>
+
+  <div id="sheet" hidden></div>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+
+  <noscript>WellTrack needs JavaScript to run.</noscript>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

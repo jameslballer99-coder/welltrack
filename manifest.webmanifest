@@ -1,0 +1,26 @@
+{
+  "name": "WellTrack",
+  "short_name": "WellTrack",
+  "description": "Track saturated fat, sugar, fiber and omega-3 — built for Singapore hawker food.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f5f1",
+  "theme_color": "#3f6f4e",
+  "lang": "en",
+  "categories": ["health", "food", "lifestyle"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "icons/screenshot-mobile.png", "sizes": "390x844", "type": "image/png", "form_factor": "narrow", "label": "Daily log" }
+  ],
+  "shortcuts": [
+    { "name": "Log food", "url": "./", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

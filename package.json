@@ -1,0 +1,10 @@
+{
+  "name": "welltrack",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Heart-health food tracker PWA. No build step — see README.",
+  "scripts": {
+    "test": "node --test tests/"
+  }
+}
