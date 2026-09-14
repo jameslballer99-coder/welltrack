@@ -5,7 +5,7 @@ const CACHE = `welltrack-${VERSION}`;
 
 // Relative paths so the app works at a GitHub Pages sub-path like /welltrack/.
 const ASSETS = [
-  './', 'index.html', 'manifest.webmanifest', 'css/app.css',
+  './', 'index.html', 'css/app.css',
   'js/app.js', 'js/core.js', 'js/foods.js', 'js/store.js', 'js/ai.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-192.png', 'icons/icon-maskable-512.png',
   'icons/apple-touch-icon.png', 'icons/favicon-32.png',
@@ -32,6 +32,8 @@ self.addEventListener('fetch', event => {
   const req = event.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return; // never touch Anthropic API calls
+  // Android reads the manifest to build the installed app (splash colour, icon). Always give it the live one.
+  if (url.pathname.endsWith('manifest.webmanifest')) return;
 
   // In development go to the network first so edits show up; fall back to cache offline.
   if (DEV) {
