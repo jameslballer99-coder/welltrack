@@ -52,7 +52,7 @@ const ROWS = [
   ['Tofu, firm', '100g', 0.7, 0, 0, 0.9, 300],
   // Grains & carbs
   ['Oatmeal, cooked', '1 cup', 0.4, 0, 0, 4.0, 55],
-  ['Psyllium husk', '1 tbsp', 0, 0, 0, 5.0, 0],
+  ['Psyllium husk', '2 heaped tbsp (~15g)', 0, 0, 0, 12.0, 0], // whole husk is ~80% fiber
   ['Brown rice, cooked', '1 cup', 0.4, 0, 0, 3.5, 20],
   ['White rice, cooked', '1 cup', 0.1, 0, 0, 0.6, 5],
   ['Wholemeal bread', '1 slice', 0.2, 0, 1.5, 2.0, 20],
