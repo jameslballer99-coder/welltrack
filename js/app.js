@@ -760,7 +760,7 @@ async function boot() {
   const migrated = await migrateFromV1IfPresent().catch(() => false);
   S = { ...loadAll(), view: 'log', date: todayKey(), histMetric: 'satFat', histRange: 7, calMonth: todayKey().slice(0, 7), sheet: null };
   render();
-  requestAnimationFrame(() => window.hideSplash?.());
+  window.hideSplash?.(); // the splash has already painted, so the fade still runs
   registerSW();
   scheduleReminder();
   navigator.storage?.persist?.().catch(() => {});
