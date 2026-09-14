@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS = {
   apiKey: '',
   model: 'claude-haiku-4-5',
   reminder: { enabled: false, time: '18:00' },
+  checkFoods: {}, // checklist id → food a tick logs, set when the user edits a ticked entry
 };
 
 const read = (key, fallback) => {

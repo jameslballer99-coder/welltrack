@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   addDays, todayKey, round, dayTotals, dayStatus, computeStreak, series, summarize,
   searchFoods, recentFoods, migrateV1Item, migrateLogs, migrateFavs, normalizeBackup, toCSV, emptyDay, DEFAULT_TARGETS,
+  CHECKLIST, mealForTime,
 } from '../js/core.js';
 import { FOODS } from '../js/foods.js';
 
@@ -111,6 +112,24 @@ test('CSV escapes quotes and returns null when empty', () => {
   const [, row] = csv.split('\r\n');
   assert.match(row, /"Kopi ""O"""/);
   assert.match(row, /"12"/);
+});
+
+test('mealForTime follows the breakfast/lunch/dinner/snack windows', () => {
+  const at = (h, m = 0) => mealForTime(new Date(2026, 8, 14, h, m));
+  assert.equal(at(0), 'Breakfast'); // anything before 11am, including just after midnight
+  assert.equal(at(10, 59), 'Breakfast');
+  assert.equal(at(11), 'Lunch');
+  assert.equal(at(14, 59), 'Lunch');
+  assert.equal(at(15), 'Snacks');
+  assert.equal(at(16, 59), 'Snacks');
+  assert.equal(at(17), 'Dinner');
+  assert.equal(at(20, 59), 'Dinner');
+  assert.equal(at(21), 'Snacks');
+  assert.equal(at(23, 30), 'Snacks');
+});
+
+test('every checklist item maps to a built-in food', () => {
+  for (const c of CHECKLIST) assert.ok(FOODS.some(f => f.name === c.food), c.id);
 });
 
 test('food database rows are complete', () => {

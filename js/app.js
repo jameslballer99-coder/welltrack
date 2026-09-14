@@ -1,7 +1,7 @@
 import {
   NUTRIENTS, NUTRIENT_KEYS, MEALS, CHECKLIST, todayKey, addDays, parseDateKey, toDateKey, fmt, num, round,
   cleanBase, itemValue, emptyDay, dayItems, dayTotals, totals, computeStreak, sumRange, series, summarize,
-  searchFoods, recentFoods, foodKey, normalizeBackup, toCSV,
+  searchFoods, recentFoods, foodKey, normalizeBackup, toCSV, mealForTime,
 } from './core.js';
 import { FOODS } from './foods.js';
 import { loadAll, save, upsertFood, photos, extractPhotos, migrateFromV1IfPresent } from './store.js';
@@ -103,6 +103,7 @@ function viewLog() {
       <div class="chips">
         ${CHECKLIST.map(c => `<button type="button" class="chip ${checks[c.id] ? 'on' : ''}" data-act="check" data-id="${c.id}" aria-pressed="${!!checks[c.id]}">${c.emoji} ${c.label}</button>`).join('')}
       </div>
+      <p class="hint">Tap to log it to ${mealForTime().toLowerCase()} · tap again to remove</p>
     </section>
 
     ${MEALS.map(meal => {
@@ -284,7 +285,7 @@ function openEdit(meal, id) {
   if (!it) return;
   S.sheet = {
     mode: 'edit', meal, itemId: it.id, step: 'form', busy: '', error: '',
-    draft: { name: it.name, serving: it.serving, servings: it.servings, base: { ...it.base }, meal, photo: null, photoId: it.photoId || null, photoRemoved: false, source: 'user', saveFood: false },
+    draft: { name: it.name, serving: it.serving, servings: it.servings, base: { ...it.base }, meal, photo: null, photoId: it.photoId || null, photoRemoved: false, source: 'user', saveFood: false, checkId: it.checkId },
   };
   renderSheet();
   if (it.photoId) photos.get(it.photoId).then(p => { if (S.sheet?.draft && p) { S.sheet.draft.photo = p; renderSheet(); } });
@@ -450,7 +451,7 @@ async function submitItem() {
   }
   if (d.photoRemoved) photoId = null; // in edit mode the photo may still be loading, so don't key off d.photo
 
-  const item = { id, name: d.name.trim(), serving: d.serving.trim() || '1 serving', servings, base: cleanBase(d.base), ...(photoId ? { photoId } : {}) };
+  const item = { id, name: d.name.trim(), serving: d.serving.trim() || '1 serving', servings, base: cleanBase(d.base), ...(photoId ? { photoId } : {}), ...(d.checkId ? { checkId: d.checkId } : {}) };
   const day = structuredClone(S.logs[S.date] || emptyDay());
   if (sh.mode === 'edit') {
     const idx = day[sh.meal].findIndex(x => x.id === id);
@@ -460,6 +461,13 @@ async function submitItem() {
     day[d.meal].push(item);
   }
   S.logs = { ...S.logs, [S.date]: day };
+
+  // Editing an entry made by a checklist tick makes that the food the tick logs from now on.
+  if (item.checkId) {
+    const { name, serving, servings: n, base } = item;
+    S.settings = { ...S.settings, checkFoods: { ...S.settings.checkFoods, [item.checkId]: { name, serving, servings: n, base } } };
+    persist('settings');
+  }
 
   if (d.saveFood) {
     S.foods = upsertFood(S.foods, { name: item.name, serving: item.serving, base: item.base, source: d.source === 'ai' ? 'ai' : 'user' });
@@ -476,15 +484,54 @@ async function submitItem() {
 function removeItem(meal, id) {
   const before = S.logs[S.date];
   if (!before) return;
+  const date = S.date, checksBefore = S.checks[date];
   const it = before[meal].find(x => String(x.id) === id);
   const day = { ...before, [meal]: before[meal].filter(x => String(x.id) !== id) };
-  const logs = { ...S.logs, [S.date]: day };
-  if (!dayItems(day).length) delete logs[S.date];
-  const date = S.date;
+  const logs = { ...S.logs, [date]: day };
+  if (!dayItems(day).length) delete logs[date];
   S.logs = logs;
-  persist('logs');
+  // Deleting the entry a checklist tick created also unticks it, unless another entry for it remains.
+  if (it?.checkId && !dayItems(day).some(x => x.checkId === it.checkId)) {
+    S.checks = { ...S.checks, [date]: { ...checksBefore, [it.checkId]: false } };
+  }
+  persist('logs', 'checks');
   render();
-  toast(`Removed ${it?.name || 'item'}`, { label: 'Undo', run: () => { S.logs = { ...S.logs, [date]: before }; persist('logs'); render(); } });
+  toast(`Removed ${it?.name || 'item'}`, {
+    label: 'Undo',
+    run: () => { S.logs = { ...S.logs, [date]: before }; S.checks = { ...S.checks, [date]: checksBefore }; persist('logs', 'checks'); render(); },
+  });
+}
+
+// Ticking a heart-healthy food logs it to the meal for the current time; unticking removes that entry.
+function toggleChecklist(checkId) {
+  const date = S.date;
+  const wasOn = !!S.checks[date]?.[checkId];
+  S.checks = { ...S.checks, [date]: { ...(S.checks[date] || {}), [checkId]: !wasOn } };
+  const day = structuredClone(S.logs[date] || emptyDay());
+  const c = CHECKLIST.find(x => x.id === checkId);
+
+  if (wasOn) {
+    // Remove the latest entry this tick created, wherever the user may have moved it.
+    const meal = [...MEALS].reverse().find(m => day[m].some(x => x.checkId === checkId));
+    if (meal) {
+      const idx = day[meal].map(x => x.checkId).lastIndexOf(checkId);
+      const [gone] = day[meal].splice(idx, 1);
+      toast(`Removed ${gone.name} from ${meal}`);
+    }
+  } else {
+    const meal = mealForTime();
+    const src = S.settings.checkFoods?.[checkId] || { ...FOODS.find(f => f.name === c.food), servings: 1 };
+    day[meal].push({
+      id: `${Date.now()}`, name: src.name, serving: src.serving, servings: src.servings,
+      base: cleanBase(src.base), checkId,
+    });
+    toast(`Added ${src.name} to ${meal} — tap it to change`);
+  }
+
+  S.logs = { ...S.logs, [date]: day };
+  if (!dayItems(day).length) delete S.logs[date];
+  persist('logs', 'checks');
+  render();
 }
 
 // ── Import / export ───────────────────────────────────────────
@@ -575,19 +622,17 @@ const actions = {
   'day:prev': () => { S.date = addDays(S.date, -1); render(); },
   'day:next': () => { if (S.date < todayKey()) { S.date = addDays(S.date, 1); render(); } },
   'day:today': () => { S.date = todayKey(); render(); },
-  'check': el => {
-    const day = { ...(S.checks[S.date] || {}) };
-    day[el.dataset.id] = !day[el.dataset.id];
-    S.checks = { ...S.checks, [S.date]: day };
-    persist('checks'); render();
-  },
+  'check': el => toggleChecklist(el.dataset.id),
   'meal:add': el => openAdd(el.dataset.meal),
   'meal:copy': el => {
     const meal = el.dataset.meal, src = S.logs[addDays(S.date, -1)]?.[meal] || [];
     const day = structuredClone(S.logs[S.date] || emptyDay());
     day[meal] = src.map((it, i) => ({ ...structuredClone(it), id: `${Date.now()}-${i}` }));
     S.logs = { ...S.logs, [S.date]: day };
-    persist('logs'); render(); toast(`Copied ${src.length} item${src.length === 1 ? '' : 's'}`);
+    // Copied checklist foods tick their buttons too, so the two stay in step.
+    const ticks = Object.fromEntries(src.filter(it => it.checkId).map(it => [it.checkId, true]));
+    S.checks = { ...S.checks, [S.date]: { ...(S.checks[S.date] || {}), ...ticks } };
+    persist('logs', 'checks'); render(); toast(`Copied ${src.length} item${src.length === 1 ? '' : 's'}`);
   },
   'item:edit': el => openEdit(el.dataset.meal, el.dataset.id),
   'item:del': el => removeItem(el.dataset.meal, el.dataset.id),

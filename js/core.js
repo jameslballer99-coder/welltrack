@@ -12,13 +12,23 @@ export const LIMIT_KEYS = NUTRIENTS.filter(n => n.kind === 'limit').map(n => n.k
 
 export const DEFAULT_TARGETS = { satFat: 20, transFat: 2, addedSugar: 50, fiber: 15, omega3Weekly: 3500 };
 export const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+// `food` is the built-in food a tick logs until the user edits that entry; their version is then remembered.
 export const CHECKLIST = [
-  { id: 'oatmeal',  label: 'Oatmeal',  emoji: '🥣' },
-  { id: 'psyllium', label: 'Psyllium', emoji: '🌾' },
-  { id: 'flaxseed', label: 'Flaxseed', emoji: '🌱' },
-  { id: 'nuts',     label: 'Nuts',     emoji: '🥜' },
-  { id: 'fruits',   label: 'Fruits',   emoji: '🍎' },
+  { id: 'oatmeal',  label: 'Oatmeal',  emoji: '🥣', food: 'Oatmeal, cooked' },
+  { id: 'psyllium', label: 'Psyllium', emoji: '🌾', food: 'Psyllium husk' },
+  { id: 'flaxseed', label: 'Flaxseed', emoji: '🌱', food: 'Flaxseed, ground' },
+  { id: 'nuts',     label: 'Nuts',     emoji: '🥜', food: 'Almonds' },
+  { id: 'fruits',   label: 'Fruits',   emoji: '🍎', food: 'Apple' },
 ];
+
+// Breakfast before 11:00, lunch 11:00–14:59, dinner 17:00–20:59, snacks any other time.
+export function mealForTime(date = new Date()) {
+  const h = date.getHours();
+  if (h < 11) return 'Breakfast';
+  if (h < 15) return 'Lunch';
+  if (h >= 17 && h < 21) return 'Dinner';
+  return 'Snacks';
+}
 
 // ── Dates ─────────────────────────────────────────────────────
 // Date keys are local-time YYYY-MM-DD strings, so they sort lexically.
