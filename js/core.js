@@ -19,6 +19,10 @@ export const NUTRIENTS = [
 ];
 export const NUTRIENT_KEYS = NUTRIENTS.map(n => n.key);
 export const LIMIT_KEYS = NUTRIENTS.filter(n => n.kind === 'limit').map(n => n.key);
+// A day is judged on saturated fat and sodium alone: the two that swing day to day, hide in the food
+// and change what you order. Cholesterol, trans fat and added sugar are still totalled and shown on
+// the Log screen, but they don't decide whether a day counts as on track.
+export const STATUS_KEYS = ['satFat', 'sodium'];
 export const nutrient = key => NUTRIENTS.find(n => n.key === key);
 
 // Cholesterol-lowering (LDL) targets plus the Portfolio diet: sat fat 15 g (between the AHA's 6% of
@@ -90,13 +94,13 @@ export function dayStatus(day, targets = DEFAULT_TARGETS) {
   const items = dayItems(day);
   if (!items.length) return 'empty';
   const t = totals(items);
-  const ratio = Math.max(...LIMIT_KEYS.map(k => (k in targets ? limitRatio(t[k], targets[k]) : 0)));
+  const ratio = Math.max(...STATUS_KEYS.map(k => (k in targets ? limitRatio(t[k], targets[k]) : 0)));
   if (ratio > 1) return 'over';
   if (ratio > 0.75) return 'close';
   return 'good';
 }
 
-// Consecutive logged days within all limits, ending today. An empty today doesn't break it.
+// Consecutive logged days on track (sat fat and sodium), ending today. An empty today doesn't break it.
 export function computeStreak(logs, targets = DEFAULT_TARGETS, today = todayKey()) {
   let streak = 0;
   for (let i = 0; i <= 3650; i++) {

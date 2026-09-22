@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   addDays, todayKey, round, dayTotals, dayStatus, computeStreak, series, summarize,
   searchFoods, recentFoods, migrateV1Item, migrateLogs, migrateFavs, normalizeBackup, toCSV, emptyDay, DEFAULT_TARGETS,
-  CHECKLIST, mealForTime, upgradeBase, upgradeSettings, limitRatio,
+  CHECKLIST, mealForTime, upgradeBase, upgradeSettings, limitRatio, STATUS_KEYS,
 } from '../js/core.js';
 import { FOODS, LEGACY } from '../js/foods.js';
 
@@ -29,22 +29,29 @@ test('totals multiply per-serving values by servings', () => {
   assert.equal(t.fiber, 3);
 });
 
-test('dayStatus uses the worst limit ratio', () => {
+test('dayStatus scores a day on sat fat and sodium only', () => {
   assert.equal(dayStatus(undefined), 'empty');
   assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 5 })] })), 'good');
   assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 12 })] })), 'close');
   assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 15 })] })), 'close');
   assert.equal(dayStatus(day({ Lunch: [item('a', { satFat: 15.5 })] })), 'over');
+  assert.equal(dayStatus(day({ Lunch: [item('soup', { sodium: 1600 })] })), 'close');
   assert.equal(dayStatus(day({ Lunch: [item('soup', { sodium: 2400 })] })), 'over');
-  assert.equal(dayStatus(day({ Breakfast: [item('eggs', { cholesterol: 372 })] })), 'over');
+  assert.deepEqual(STATUS_KEYS, ['satFat', 'sodium']);
+});
+
+test('the other limits are tracked but never mark a day over', () => {
+  for (const over of [{ cholesterol: 900 }, { transFat: 5 }, { addedSugar: 120 }]) {
+    assert.equal(dayStatus(day({ Breakfast: [item('x', over)] })), 'good', JSON.stringify(over));
+  }
+  const both = day({ Breakfast: [item('x', { cholesterol: 900, satFat: 20 })] });
+  assert.equal(dayStatus(both), 'over');
 });
 
 test('a trans fat target of 0 only flags label-visible amounts (0.5 g+)', () => {
   assert.equal(limitRatio(0.4, 0), 0);
   assert.equal(limitRatio(0.5, 0), Infinity);
   assert.equal(limitRatio(10, 20), 0.5);
-  assert.equal(dayStatus(day({ Lunch: [item('milk', { transFat: 0.1 }, 3)] })), 'good');
-  assert.equal(dayStatus(day({ Lunch: [item('Big Mac', { transFat: 1 })] })), 'over');
 });
 
 test('streak counts consecutive in-limit days and skips an empty today', () => {

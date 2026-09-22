@@ -104,8 +104,8 @@ function viewLog() {
     </section>
 
     ${isToday ? `<p class="streak ${streak ? 'on' : ''}">${streak
-      ? `🔥 <b>${streak}-day streak</b> within all limits`
-      : 'Log meals and stay within limits to start a streak'}</p>` : ''}
+      ? `🔥 <b>${streak}-day streak</b> on sat fat and sodium`
+      : 'Stay under your sat fat and sodium limits to start a streak'}</p>` : ''}
 
     <section class="card">
       <div class="row-between">
@@ -202,10 +202,10 @@ function viewHistory() {
       ${chart(points, metric, target)}
       <div class="stats">
         <div><b>${sum.loggedDays}</b><span>days logged</span></div>
-        <div><b>${sum.loggedDays ? Math.round((sum.withinLimits / sum.loggedDays) * 100) : 0}%</b><span>within limits</span></div>
+        <div><b>${sum.loggedDays ? Math.round((sum.withinLimits / sum.loggedDays) * 100) : 0}%</b><span>days on track</span></div>
         <div><b>${fmt(sum.avg[metric], dp(metric))}${unitOf(metric)}</b><span>daily avg ${labelOf(metric).toLowerCase()}</span></div>
       </div>
-      <p class="hint">Dashed line: ${metric === 'omega3' ? 'weekly fish omega-3 target ÷ 7' : 'your daily target'}. Tap a bar to open that day.</p>
+      <p class="hint">Dashed line: ${metric === 'omega3' ? 'weekly fish omega-3 target ÷ 7' : 'your daily target'}. Tap a bar to open that day.<br>A day counts as on track when it stays under the sat fat and sodium limits; the other nutrients are tracked but never mark a day over.</p>
     </section>
 
     <section class="card">
@@ -224,6 +224,7 @@ function viewHistory() {
         }).join('')}
       </div>
       <div class="legend"><span class="s-good"><i></i>On track</span><span class="s-close"><i></i>Near limit</span><span class="s-over"><i></i>Over</span></div>
+      <p class="hint center">Judged on sat fat and sodium</p>
     </section>
     <button type="button" class="btn block ghost" data-act="export:csv">Export all logs as CSV</button>
   `;
