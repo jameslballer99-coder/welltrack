@@ -94,7 +94,7 @@ const ROWS = [
   ['Tofu, firm', '100g', 0.7, 0, 0, 0.9, 10, 0, 400, 0, 0.3, 30, 0],
   // Grains
   ['Oatmeal, cooked', '1 cup', 0.4, 0, 0, 4.0, 10, 0, 20, 0, 2.0, 20, 0],
-  ['Psyllium husk', '2 heaped tbsp (~15g)', 0, 0, 0, 12.0, 5, 0, 0, 0, 9.0, 0, 0], // whole husk is ~80% fiber, mostly soluble
+  ['Psyllium husk', '1 heaped tsp (~5g)', 0, 0, 0, 4.0, 2, 0, 0, 0, 3.0, 0, 0], // one dose before a meal; husk is ~80% fiber, mostly soluble
   ['Brown rice, cooked', '1 cup', 0.4, 0, 0, 3.5, 10, 0, 30, 0, 0.3, 20, 0],
   ['White rice, cooked', '1 cup', 0.1, 0, 0, 0.6, 2, 0, 10, 0, 0.1, 5, 0],
   ['Wholemeal bread', '1 slice', 0.2, 0, 1.5, 2.0, 130, 0, 20, 0, 0.4, 20, 0],

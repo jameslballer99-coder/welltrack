@@ -1,13 +1,13 @@
 import {
   NUTRIENT_KEYS, limitRatio, nutrient, MEALS, CHECKLIST, todayKey, addDays, parseDateKey, toDateKey, fmt, num, round,
   cleanBase, itemValue, emptyDay, dayItems, dayTotals, totals, computeStreak, sumRange, series, summarize,
-  searchFoods, recentFoods, foodKey, normalizeBackup, toCSV, mealForTime,
+  searchFoods, recentFoods, foodKey, normalizeBackup, toCSV, mealForTime, checkKey, checklistSlots, checklistDone,
 } from './core.js';
 import { FOODS } from './foods.js';
 import { loadAll, save, upsertFood, photos, extractPhotos, migrateFromV1IfPresent } from './store.js';
 import { MODELS, estimateByName, estimateFromPhoto, resizeImage } from './ai.js';
 
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.0';
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const dp = key => nutrient(key).dp;
@@ -110,12 +110,28 @@ function viewLog() {
     <section class="card">
       <div class="row-between">
         <h2 class="eyebrow">Heart-healthy foods</h2>
-        <span class="count">${CHECKLIST.filter(c => checks[c.id]).length}/${CHECKLIST.length}</span>
+        <span class="count">${checklistDone(checks)}/${checklistSlots().length}</span>
       </div>
       <div class="chips">
-        ${CHECKLIST.map(c => `<button type="button" class="chip ${checks[c.id] ? 'on' : ''}" data-act="check" data-id="${c.id}" aria-pressed="${!!checks[c.id]}">${c.emoji} ${c.label}</button>`).join('')}
+        ${CHECKLIST.filter(c => !c.perMeal).map(c => `<button type="button" class="chip ${checks[c.id] ? 'on' : ''}" data-act="check" data-id="${c.id}" aria-pressed="${!!checks[c.id]}">${c.emoji} ${c.label}</button>`).join('')}
       </div>
       <p class="hint">Tap to log it to ${mealForTime().toLowerCase()} · tap again to remove</p>
+      ${CHECKLIST.filter(c => c.perMeal).map(c => {
+        const food = FOODS.find(f => f.name === c.food);
+        return `
+        <div class="per-meal">
+          <div class="row-between">
+            <span class="sub">${c.emoji} ${c.label} · ${esc(S.settings.checkFoods?.[checkKey(c, c.perMeal[0])]?.serving || food.serving)} before each meal</span>
+            <span class="count">${c.perMeal.filter(m => checks[checkKey(c, m)]).length}/${c.perMeal.length}</span>
+          </div>
+          <div class="chips">
+            ${c.perMeal.map(m => {
+              const on = !!checks[checkKey(c, m)];
+              return `<button type="button" class="chip ${on ? 'on' : ''}" data-act="check" data-id="${c.id}" data-meal="${m}" aria-pressed="${on}">${on ? '✓ ' : ''}${m}</button>`;
+            }).join('')}
+          </div>
+        </div>`;
+      }).join('')}
     </section>
 
     ${MEALS.map(meal => {
@@ -268,9 +284,14 @@ function viewSettings() {
     </section>
 
     <section class="card">
-      <h2>Evening reminder</h2>
-      <label class="toggle"><input type="checkbox" data-setting="reminder.enabled" ${st.reminder.enabled ? 'checked' : ''}><span>Remind me about unticked heart-healthy foods</span></label>
-      <label class="field"><span>Time</span><input type="time" data-setting="reminder.time" value="${st.reminder.time}"></label>
+      <h2>Reminders</h2>
+      <label class="toggle"><input type="checkbox" data-setting="psylliumReminder.enabled" ${st.psylliumReminder.enabled ? 'checked' : ''}><span>Psyllium before each meal</span></label>
+      <div class="fields">
+        ${['Breakfast', 'Lunch', 'Dinner'].map(m => `<label class="field"><span>${m}</span><input type="time" data-setting="psylliumReminder.times.${m}" value="${st.psylliumReminder.times[m]}"></label>`).join('')}
+      </div>
+      <p class="hint">Each one is skipped if that meal's psyllium is already ticked.</p>
+      <label class="toggle"><input type="checkbox" data-setting="reminder.enabled" ${st.reminder.enabled ? 'checked' : ''}><span>Evening check-in on the other heart-healthy foods</span></label>
+      <label class="field"><span>Evening time</span><input type="time" data-setting="reminder.time" value="${st.reminder.time}"></label>
       <p class="hint">Web apps can only notify while WellTrack is open or recently used, so treat this as a nudge, not an alarm.</p>
     </section>
 
@@ -523,13 +544,15 @@ function removeItem(meal, id) {
   });
 }
 
-// Ticking a heart-healthy food logs it to the meal for the current time; unticking removes that entry.
-function toggleChecklist(checkId) {
+// Ticking a heart-healthy food logs it: per-meal items to their own meal, the rest to the meal for
+// the current time. Unticking removes that entry again.
+function toggleChecklist(id, mealSlot) {
   const date = S.date;
+  const c = CHECKLIST.find(x => x.id === id);
+  const checkId = checkKey(c, mealSlot);
   const wasOn = !!S.checks[date]?.[checkId];
   S.checks = { ...S.checks, [date]: { ...(S.checks[date] || {}), [checkId]: !wasOn } };
   const day = structuredClone(S.logs[date] || emptyDay());
-  const c = CHECKLIST.find(x => x.id === checkId);
 
   if (wasOn) {
     // Remove the latest entry this tick created, wherever the user may have moved it.
@@ -540,7 +563,7 @@ function toggleChecklist(checkId) {
       toast(`Removed ${gone.name} from ${meal}`);
     }
   } else {
-    const meal = mealForTime();
+    const meal = mealSlot || mealForTime();
     const src = S.settings.checkFoods?.[checkId] || { ...FOODS.find(f => f.name === c.food), servings: 1 };
     day[meal].push({
       id: `${Date.now()}`, name: src.name, serving: src.serving, servings: src.servings,
@@ -593,27 +616,52 @@ function exportCSV() {
   download(`welltrack-${todayKey()}.csv`, '﻿' + csv, 'text/csv;charset=utf-8');
 }
 
-// ── Reminder ──────────────────────────────────────────────────
-let reminderTimer;
-function scheduleReminder() {
-  clearTimeout(reminderTimer);
-  const r = S.settings.reminder;
-  if (!r.enabled || !('Notification' in window) || Notification.permission !== 'granted') return;
-  const [h, m] = r.time.split(':').map(Number);
-  const now = new Date(), at = new Date();
-  at.setHours(h, m, 0, 0);
-  if (at <= now) at.setDate(at.getDate() + 1);
-  reminderTimer = setTimeout(async () => {
-    const checks = S.checks[todayKey()] || {};
-    const missing = CHECKLIST.filter(c => !checks[c.id]).map(c => c.label.toLowerCase());
-    if (missing.length) {
-      const reg = await navigator.serviceWorker?.getRegistration();
-      const opts = { body: `Still to go today: ${missing.join(', ')}`, icon: 'icons/icon-192.png', tag: 'welltrack-daily' };
-      // Android Chrome only allows notifications through the service worker.
-      if (reg) reg.showNotification('WellTrack 💚', opts); else new Notification('WellTrack 💚', opts);
+// ── Reminders ──────────────────────────────────────
+let reminderTimers = [];
+
+async function notify(title, body, tag) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const opts = { body, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag };
+  // Android Chrome only allows notifications through the service worker.
+  const reg = await navigator.serviceWorker?.getRegistration();
+  if (reg) reg.showNotification(title, opts); else new Notification(title, opts);
+}
+
+// Timers only run while the app is open or recently used — a web app can't wake itself up.
+function scheduleReminders() {
+  reminderTimers.forEach(clearTimeout);
+  reminderTimers = [];
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  const at = (hhmm, fire) => {
+    const [h, m] = String(hhmm).split(':').map(Number);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return;
+    const now = new Date(), when = new Date();
+    when.setHours(h, m, 0, 0);
+    if (when <= now) when.setDate(when.getDate() + 1);
+    reminderTimers.push(setTimeout(() => { fire(); scheduleReminders(); }, when - now));
+  };
+
+  const p = S.settings.psylliumReminder;
+  const psyllium = CHECKLIST.find(c => c.id === 'psyllium');
+  if (p?.enabled) {
+    for (const meal of psyllium.perMeal) {
+      at(p.times[meal], () => {
+        if (S.checks[todayKey()]?.[checkKey(psyllium, meal)]) return; // already taken
+        notify('Psyllium before ' + meal.toLowerCase(), 'One dose with a big glass of water, then eat.', 'welltrack-psyllium-' + meal);
+      });
     }
-    scheduleReminder();
-  }, at - now);
+  }
+
+  const r = S.settings.reminder;
+  if (r?.enabled) {
+    at(r.time, () => {
+      const checks = S.checks[todayKey()] || {};
+      const missing = checklistSlots().filter(s2 => !checks[s2.key])
+        .map(s2 => s2.item.label.toLowerCase() + (s2.meal ? ` (${s2.meal.toLowerCase()})` : ''));
+      if (missing.length) notify('WellTrack 💚', `Still to go today: ${missing.join(', ')}`, 'welltrack-daily');
+    });
+  }
 }
 
 // ── Main render ───────────────────────────────────────────────
@@ -643,7 +691,7 @@ const actions = {
   'day:prev': () => { S.date = addDays(S.date, -1); render(); },
   'day:next': () => { if (S.date < todayKey()) { S.date = addDays(S.date, 1); render(); } },
   'day:today': () => { S.date = todayKey(); render(); },
-  'check': el => toggleChecklist(el.dataset.id),
+  'check': el => toggleChecklist(el.dataset.id, el.dataset.meal),
   'meal:add': el => openAdd(el.dataset.meal),
   'meal:copy': el => {
     const meal = el.dataset.meal, src = S.logs[addDays(S.date, -1)]?.[meal] || [];
@@ -726,7 +774,7 @@ document.addEventListener('change', async e => {
     let v = el.type === 'checkbox' ? el.checked : el.value;
     if (path.startsWith('targets.')) v = num(v);
     if (path === 'apiKey') v = v.trim();
-    if (path === 'reminder.enabled' && v && 'Notification' in window && Notification.permission !== 'granted') {
+    if (path.endsWith('.enabled') && v && 'Notification' in window && Notification.permission !== 'granted') {
       const perm = await Notification.requestPermission();
       if (perm !== 'granted') { v = false; el.checked = false; toast('Notifications are blocked for this site.'); }
     }
@@ -734,7 +782,7 @@ document.addEventListener('change', async e => {
     setPath(settings, path, v);
     S.settings = settings;
     persist('settings');
-    scheduleReminder();
+    scheduleReminders();
     toast('Saved');
   }
 });
@@ -783,7 +831,7 @@ async function boot() {
   render();
   window.hideSplash?.(); // the splash has already painted, so the fade still runs
   registerSW();
-  scheduleReminder();
+  scheduleReminders();
   navigator.storage?.persist?.().catch(() => {});
   if (migrated) toast('Your WellTrack history was carried over');
   setTimeout(collectPhotoGarbage, 5000);

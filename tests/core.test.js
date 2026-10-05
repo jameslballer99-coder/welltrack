@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   addDays, todayKey, round, dayTotals, dayStatus, computeStreak, series, summarize,
   searchFoods, recentFoods, migrateV1Item, migrateLogs, migrateFavs, normalizeBackup, toCSV, emptyDay, DEFAULT_TARGETS,
-  CHECKLIST, mealForTime, upgradeBase, upgradeSettings, limitRatio, STATUS_KEYS,
+  CHECKLIST, checkKey, checklistSlots, checklistDone, mealForTime, upgradeBase, upgradeSettings, limitRatio, STATUS_KEYS,
 } from '../js/core.js';
 import { FOODS, LEGACY } from '../js/foods.js';
 
@@ -151,6 +151,24 @@ test('mealForTime follows the breakfast/lunch/dinner/snack windows', () => {
 
 test('every checklist item maps to a built-in food', () => {
   for (const c of CHECKLIST) assert.ok(FOODS.some(f => f.name === c.food), c.id);
+});
+
+test('psyllium is ticked once per meal, the others once a day', () => {
+  const slots = checklistSlots();
+  assert.equal(slots.length, CHECKLIST.length + 2); // psyllium contributes three slots, not one
+  assert.deepEqual(slots.filter(s => s.item.id === 'psyllium').map(s => s.key),
+    ['psyllium@Breakfast', 'psyllium@Lunch', 'psyllium@Dinner']);
+  assert.equal(checkKey(CHECKLIST.find(c => c.id === 'oatmeal')), 'oatmeal');
+  assert.equal(checklistDone({ 'psyllium@Lunch': true, oatmeal: true }), 2);
+  assert.equal(checklistDone({}), 0);
+
+  const dose = food('Psyllium husk');
+  assert.match(dose.serving, /5g/);
+  assert.equal(dose.base.fiber, 4);
+  assert.equal(dose.base.solubleFiber, 3);
+  // Three doses give 9 g soluble fiber: most of the 10 g target, but oats or beans finish the job.
+  assert.equal(dose.base.solubleFiber * 3, 9);
+  assert.ok(dose.base.solubleFiber * 3 + food('Oatmeal, cooked').base.solubleFiber >= DEFAULT_TARGETS.solubleFiber);
 });
 
 test('untouched old built-in entries get the corrected values, including v1 names', () => {

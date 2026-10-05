@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS = {
   apiKey: '',
   model: 'claude-haiku-4-5',
   reminder: { enabled: false, time: '18:00' },
+  psylliumReminder: { enabled: false, times: { Breakfast: '07:30', Lunch: '12:00', Dinner: '18:30' } },
   checkFoods: {}, // checklist id → food a tick logs, set when the user edits a ticked entry
 };
 
@@ -45,7 +46,8 @@ export function loadAll() {
     checks: read(K.checks, {}),
     foods,
     favs: read(K.favs, []),
-    settings: { ...DEFAULT_SETTINGS, ...settings, targets: { ...DEFAULT_TARGETS, ...settings.targets }, reminder: { ...DEFAULT_SETTINGS.reminder, ...settings.reminder } },
+    settings: { ...DEFAULT_SETTINGS, ...settings, targets: { ...DEFAULT_TARGETS, ...settings.targets }, reminder: { ...DEFAULT_SETTINGS.reminder, ...settings.reminder },
+      psylliumReminder: { ...DEFAULT_SETTINGS.psylliumReminder, ...settings.psylliumReminder, times: { ...DEFAULT_SETTINGS.psylliumReminder.times, ...settings.psylliumReminder?.times } } },
   };
 }
 

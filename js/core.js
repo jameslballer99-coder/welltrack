@@ -42,11 +42,20 @@ export const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 // `food` is the built-in food a tick logs until the user edits that entry; their version is then remembered.
 export const CHECKLIST = [
   { id: 'oatmeal',  label: 'Oatmeal',  emoji: '🥣', food: 'Oatmeal, cooked' },
-  { id: 'psyllium', label: 'Psyllium', emoji: '🌾', food: 'Psyllium husk' },
+  // Psyllium works best taken with each meal, so it has one tick per meal rather than one a day.
+  { id: 'psyllium', label: 'Psyllium', emoji: '🌾', food: 'Psyllium husk', perMeal: ['Breakfast', 'Lunch', 'Dinner'] },
   { id: 'flaxseed', label: 'Flaxseed', emoji: '🌱', food: 'Flaxseed, ground' },
   { id: 'nuts',     label: 'Nuts',     emoji: '🥜', food: 'Mixed nuts, unsalted' },
   { id: 'fruits',   label: 'Fruits',   emoji: '🍎', food: 'Apple' },
 ];
+
+// One tick per meal for per-meal items, one a day for the rest. The key is what `checks` and an
+// item's `checkId` are stored under, so a per-meal tick knows which meal it belongs to.
+export const checkKey = (item, meal) => (meal ? `${item.id}@${meal}` : item.id);
+export const checklistSlots = () =>
+  CHECKLIST.flatMap(c => (c.perMeal ? c.perMeal.map(meal => ({ item: c, meal, key: checkKey(c, meal) }))
+    : [{ item: c, meal: null, key: c.id }]));
+export const checklistDone = (checks = {}) => checklistSlots().filter(s => checks[s.key]).length;
 
 // Breakfast before 11:00, lunch 11:00–14:59, dinner 17:00–20:59, snacks any other time.
 export function mealForTime(date = new Date()) {
